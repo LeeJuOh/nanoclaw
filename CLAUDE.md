@@ -38,6 +38,7 @@ Four types of skills exist in NanoClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) f
 | `/update-nanoclaw` | Bring upstream NanoClaw updates into a customized install |
 | `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
 | `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
+| `/add-second-brain` | Second brain 에이전트 설정 (볼트 + PARA + 캡처 파이프라인) |
 
 ## Contributing
 

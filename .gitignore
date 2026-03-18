@@ -17,6 +17,9 @@ groups/main/*
 groups/global/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/telegram_second-brain/
+groups/telegram_second-brain/*
+!groups/telegram_second-brain/CLAUDE.md
 
 # Secrets
 *.keys.json
