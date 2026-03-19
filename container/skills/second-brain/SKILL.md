@@ -73,21 +73,96 @@ Commands:
 
 **URL Capture:**
 1. Detect URL in message
-2. Crawl: `curl -sL -m 30 <url>` → if HTML, extract readable content
-3. Generate: title, summary (2-3 sentences), tags (3-5 keywords)
-4. Create frontmatter — see `references/schema.md` for the canonical format
-5. Save to `$VAULT/inbox/YYYYMMDD-HHMMSS-slug.md`
+2. Crawl: `curl -sL -m 30 <url>` → if HTML, extract readable content. If curl fails, use `agent-browser` as fallback.
+3. **Source Analysis** — read the crawled content and produce:
+   - `title`: 원문 제목 또는 핵심을 반영한 제목
+   - `ai_summary`: 2-3문장 요약
+   - `tags`: 3-5개 키워드
+4. **Deep Analysis** — 본문을 심층 분석하여 노트 본문에 포함:
+   - **핵심 주장 (Core Claims)**: 저자의 핵심 아이디어 2-3개. 단순 나열이 아니라 "왜 이 주장을 하는지" 맥락 포함
+   - **주요 논거 및 근거 (Key Arguments)**: 핵심 주장을 뒷받침하는 증거, 데이터, 사례
+   - **인사이트 (Insights)**: 이 콘텐츠에서 주목할 만한 점, 기존 통념과 다른 시각, 놓치기 쉬운 포인트
+   - **실용적 시사점 (Actionable Takeaways)**: 실제로 적용하거나 행동으로 옮길 수 있는 것
+   - **한계 및 열린 질문 (Limitations & Open Questions)**: 저자가 다루지 않은 부분, 추가 탐구가 필요한 질문
+   - **볼트 연결 (Vault Connections)**: `grep -ril` 로 볼트 내 관련 노트를 검색하여, 기존 지식과의 연결점 명시. 관련 노트가 없으면 생략
+5. Create frontmatter + structured note body (see Note Format below)
+6. Save to `$VAULT/inbox/YYYYMMDD-HHMMSS-slug.md`
    - Slug: ASCII alphanumeric + hyphens from title, max 60 chars
    - Korean titles: extract English keywords or date-based fallback
-6. Git: `cd $VAULT && git add inbox/<filename> && git commit -m "capture: {title}" && git push`
+7. Git: `cd $VAULT && git add inbox/<filename> && git commit -m "capture: {title}" && git push`
    - Push failure: keep local commit, retry on next capture or weekly review
-7. Read `_settings.yaml` for auto_classify mode:
+8. Read `_settings.yaml` for auto_classify mode:
    - `auto_classify: false` → Reply with classification recommendation
    - `auto_classify: true` → Auto-classify immediately
+
+**Note Format:**
+
+```markdown
+---
+title: "{title}"
+source: "{url}"
+source_type: web
+captured: YYYY-MM-DDTHH:MM:SS+09:00
+processed: YYYY-MM-DDTHH:MM:SS+09:00
+status: raw
+tags: [{tag1}, {tag2}, ...]
+contexts: []
+ai_summary: "{2-3문장 요약}"
+captured_via: telegram
+---
+
+# {title}
+
+*출처*: {author/platform} | {date}
+
+---
+
+## 핵심 주장
+
+- {주장 1}: {맥락과 함께 설명}
+- {주장 2}: {맥락과 함께 설명}
+
+## 주요 논거 및 근거
+
+- {증거/데이터/사례 1}
+- {증거/데이터/사례 2}
+
+## 인사이트
+
+{기존 통념과 다른 시각, 놓치기 쉬운 포인트, 주목할 만한 점}
+
+## 실용적 시사점
+
+- {행동으로 옮길 수 있는 것 1}
+- {행동으로 옮길 수 있는 것 2}
+
+## 한계 및 열린 질문
+
+- {저자가 다루지 않은 부분}
+- {추가 탐구가 필요한 질문}
+
+## 볼트 연결
+
+- {관련 노트가 있으면 옵시디언 wikilink로 연결}
+```
+
+**Obsidian Compatibility Rules:**
+- **Links**: 볼트 내부 노트 연결 시 반드시 옵시디언 wikilink `[[노트이름]]` 사용. 외부 URL은 마크다운 링크 `[텍스트](url)` 사용
+  - 같은 폴더: `[[파일명]]` (확장자 생략)
+  - 다른 폴더: `[[폴더/파일명]]` (볼트 루트 기준 상대 경로)
+  - 표시 텍스트 변경: `[[파일명|표시할 텍스트]]`
+  - 이미지 임베드: `![[이미지파일.png]]`
+- **Tags**: frontmatter YAML 배열 `tags: [tag1, tag2]` 사용. 본문에서 인라인 태그 `#tag` 사용하지 않음
+- **Frontmatter**: YAML `---` 블록으로 감싸고, 옵시디언이 인식하는 필드(title, tags, aliases) 포함. 커스텀 필드(ai_summary, contexts 등)도 옵시디언 Properties에서 표시됨
+- **File names**: ASCII 알파벳 + 하이픈 + 숫자. 특수문자(`/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`) 사용 금지
+- **contexts vs tags**: `contexts`는 PARA 폴더 경로(구조적 소속), `tags`는 자유 키워드. 역할이 다르므로 둘 다 유지
+
+**Analysis depth guideline:** 콘텐츠 길이에 비례하여 분석 깊이를 조절한다. 트윗/짧은 스레드(~500자 이하)는 핵심 주장 + 인사이트 + 시사점 위주로 간결하게, 긴 아티클/논문은 모든 섹션을 충실히 작성한다. 빈 섹션은 생략한다.
 
 **Text Memo Capture** (triggered by "저장해"/"캡처해" + text):
 - Same pipeline but: no source field, source_type: "memo", title auto-generated from content
 - Slug from first ~60 chars of text
+- Deep Analysis는 메모 길이에 따라 조절: 짧은 메모(~200자 이하)는 핵심 주장 + 시사점만, 긴 메모는 전체 분석 수행
 
 **Duplicate Check:**
 Before saving, search existing notes: `grep -rl "<normalized-url>" $VAULT/`
@@ -101,6 +176,11 @@ After capture, recommend a PARA category using the decision tree in `references/
 
 Reply format:
 > *캡처 완료: {title}*
+>
+> *핵심*: {핵심 주장 1-2줄 요약}
+> *인사이트*: {가장 주목할 만한 포인트 1줄}
+> *시사점*: {실용적 행동 지침 1줄}
+>
 > 추천: `resources/{topic}` — {reason}
 > 다른 옵션: `projects/{name}`, `areas/{name}`
 > (답장으로 선택하거나 직접 지정해주세요)
@@ -113,7 +193,7 @@ On user response:
 **Auto Mode (auto_classify: true):**
 - Classify immediately using decision tree
 - Move file + set `status: auto_classified`
-- Reply: "*캡처+분류 완료: {title}* → `{target}`"
+- Reply: "*캡처+분류 완료: {title}* → `{target}`\n*핵심*: {1-2줄} | *인사이트*: {1줄} | *시사점*: {1줄}"
 
 **Direct commands:**
 - "이 노트를 {target}으로 옮겨줘" → move + update frontmatter
