@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(launchctl list:*)",
+      "Skill(notebooklm-connector:notebooklm-manager)",
+      "Skill(notebooklm-connector:notebooklm-manager:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run:*)",
+      "Bash(npx prettier:*)",
+      "Bash(npm --version)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(Object.keys\\(p.scripts\\)\\)\")",
+      "Bash(env -i HOME=$HOME PATH=$PATH npm run format:fix)"
+    ]
+  }
+}

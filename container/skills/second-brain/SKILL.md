@@ -57,7 +57,7 @@ When you receive a message, classify it:
 If the user says "볼트 셋업해줘" or similar, check `$VAULT`:
 1. If PARA directories exist → "이미 셋업되어 있어요"
 2. If not → create `inbox/`, `projects/`, `areas/`, `resources/`, `archive/`, README.md
-3. Git init + initial commit + push
+3. Git init + initial commit + push (새 레포만 지원, 기존 레포 연결 불가)
 4. Confirm to user
 
 ### PARA Management

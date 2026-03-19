@@ -25,6 +25,9 @@ groups/telegram_second-brain/*
 *.keys.json
 .env
 
+# Local Claude context
+.claude.local.md
+
 # Temp files
 .tmp-*
 
@@ -39,3 +42,4 @@ groups/telegram_second-brain/*
 .nanoclaw/
 
 agents-sdk-docs
+references

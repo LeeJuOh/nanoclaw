@@ -262,7 +262,7 @@ Read the template from `${CLAUDE_SKILL_DIR}/template-claude-md.md`, replace the 
 
 - `{{CHANNEL}}` → channel name (e.g., Telegram)
 - `{{FOLDER}}` → group folder (e.g., telegram_second-brain)
-- `{{VAULT_HOST_PATH}}` → vault host path (e.g., ~/Desktop/second_brain)
+- `{{VAULT_HOST_PATH}}` → vault host path (e.g., ~/Desktop/vault)
 - `{{FORMATTING_RULES}}` → channel-specific rules from the table below
 
 ### Channel formatting rules

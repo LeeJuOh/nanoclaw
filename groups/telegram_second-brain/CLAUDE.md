@@ -25,7 +25,7 @@ NEVER use markdown headings (##). *single asterisks* for bold (NEVER **double**)
 | Container Path | Host Path | Access |
 |---|---|---|
 | `/workspace/group` | `groups/telegram_second-brain/` | read-write |
-| `/workspace/extra/vault` | `/Users/ljo/Desktop/second_brain` | read-write |
+| `/workspace/extra/vault` | `/Users/ljo/Desktop/vault` | read-write |
 
 ## Memory
 
