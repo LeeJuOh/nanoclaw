@@ -427,10 +427,7 @@ export async function processTaskIpc(
       if (data.groupFolder === sourceGroup || isMain) {
         const targetFolder = data.groupFolder || sourceGroup;
         deps.clearSession(targetFolder);
-        logger.info(
-          { targetFolder, sourceGroup },
-          'Session cleared via IPC',
-        );
+        logger.info({ targetFolder, sourceGroup }, 'Session cleared via IPC');
       } else {
         logger.warn(
           { sourceGroup, targetFolder: data.groupFolder },
