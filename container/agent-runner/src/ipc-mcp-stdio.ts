@@ -333,6 +333,25 @@ Use available_groups.json to find the JID for a group. The folder name must be c
   },
 );
 
+server.tool(
+  'clear_session',
+  'Clear the current conversation session. The next message will start a fresh context with no prior conversation history. Use when the user asks to reset context (e.g., "컨텍스트 초기화", "세션 클리어", "대화 리셋", "새로 시작"). The current container will exit after clearing.',
+  {},
+  async () => {
+    const data = {
+      type: 'clear_session',
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(TASKS_DIR, data);
+
+    return {
+      content: [{ type: 'text' as const, text: 'Session clear requested. The next message will start with a fresh context.' }],
+    };
+  },
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);

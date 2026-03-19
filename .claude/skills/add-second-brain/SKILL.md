@@ -153,7 +153,7 @@ cd "<VAULT_PATH>"
 GH_USER=$(gh api user --jq '.login' 2>/dev/null || git remote get-url origin 2>/dev/null | sed -n 's|.*github.com[:/]\([^/]*\)/.*|\1|p')
 echo "https://${GH_USER}:<PAT>@github.com" > .git-credentials
 chmod 600 .git-credentials
-git config --local credential.helper "store --file=$(pwd)/.git-credentials"
+git config --local credential.helper "store --file=.git-credentials"
 ```
 
 ### Initial commit (if needed)

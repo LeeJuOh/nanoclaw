@@ -23,6 +23,7 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
+  clearSession: (groupFolder: string) => void;
 }
 
 let ipcWatcherRunning = false;
@@ -417,6 +418,23 @@ export async function processTaskIpc(
         logger.warn(
           { sourceGroup },
           'Unauthorized refresh_groups attempt blocked',
+        );
+      }
+      break;
+
+    case 'clear_session':
+      // Any group can clear its own session
+      if (data.groupFolder === sourceGroup || isMain) {
+        const targetFolder = data.groupFolder || sourceGroup;
+        deps.clearSession(targetFolder);
+        logger.info(
+          { targetFolder, sourceGroup },
+          'Session cleared via IPC',
+        );
+      } else {
+        logger.warn(
+          { sourceGroup, targetFolder: data.groupFolder },
+          'Unauthorized clear_session attempt blocked',
         );
       }
       break;

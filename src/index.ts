@@ -37,6 +37,7 @@ import {
   initDatabase,
   setRegisteredGroup,
   setRouterState,
+  deleteSession,
   setSession,
   storeChatMetadata,
   storeMessage,
@@ -645,6 +646,11 @@ async function main(): Promise<void> {
       for (const group of Object.values(registeredGroups)) {
         writeTasksSnapshot(group.folder, group.isMain === true, taskRows);
       }
+    },
+    clearSession: (groupFolder: string) => {
+      delete sessions[groupFolder];
+      deleteSession(groupFolder);
+      logger.info({ groupFolder }, 'Session cleared');
     },
   });
   queue.setProcessMessagesFn(processGroupMessages);
