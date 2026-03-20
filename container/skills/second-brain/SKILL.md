@@ -174,6 +174,8 @@ Before saving, search existing notes: `grep -rl "<normalized-url>" $VAULT/`
 **Manual Mode (auto_classify: false — default):**
 After capture, recommend a PARA category using the decision tree in `references/para.md`.
 
+Before recommending, check which PARA subfolders already exist in the vault (`ls $VAULT/projects/ $VAULT/areas/ $VAULT/resources/`). Label each option as **(기존)** or **(신규)**.
+
 Reply format:
 > *캡처 완료: {title}*
 >
@@ -181,8 +183,8 @@ Reply format:
 > *인사이트*: {가장 주목할 만한 포인트 1줄}
 > *시사점*: {실용적 행동 지침 1줄}
 >
-> 추천: `resources/{topic}` — {reason}
-> 다른 옵션: `projects/{name}`, `areas/{name}`
+> 추천: `resources/{topic}` (기존) — {reason}
+> 다른 옵션: `projects/{name}` (기존), `areas/{name}` (신규)
 > (답장으로 선택하거나 직접 지정해주세요)
 
 On user response:

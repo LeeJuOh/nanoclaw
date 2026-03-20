@@ -216,9 +216,10 @@ inbox/의 노트를 PARA 카테고리로 이동한다. **수동 분류가 기본
    - 진행 중인 프로젝트에 관련? → Projects 추천
    - 책임 영역에 관련? → Areas 추천
    - 참고자료? → Resources 추천
-3. 텔레그램으로 추천 제시:
-   > "캡처 완료: {title}\n추천: `resources/ddd-패턴`에 넣을까요?\n다른 곳: `projects/linkdive`, `areas/개발`"
-4. 사용자 응답:
+3. 추천 전 볼트의 기존 PARA 하위 폴더 목록을 확인하여, 각 추천 경로가 기존 폴더인지 신규 생성인지 표기
+4. 텔레그램으로 추천 제시:
+   > "캡처 완료: {title}\n추천: `resources/ddd-패턴` (기존)에 넣을까요?\n다른 곳: `projects/linkdive` (기존), `areas/개발` (신규)"
+5. 사용자 응답:
    - 승인 → 해당 위치로 이동 + `status: classified` + contexts 설정
    - 거부/수정 → 사용자가 지정한 위치로 이동
    - 무응답 → inbox/에 `status: pending_review`로 유지
@@ -381,6 +382,7 @@ NanoClaw 스케줄러가 cron 또는 interval 형식으로 등록. 실행 시간
 | `captured_via` frontmatter 필드 | 현재 캡처 채널이 텔레그램 하나. 채널 추가 시 도입 | 두 번째 캡처 채널 추가 시 |
 | `.linkdive/config.yaml` + `templates/` | 설정은 CLAUDE.md로 충분. 별도 config 파일은 스킬 공개(1c) 시 검토 | Phase 1c |
 | 비동기 지시 폴더 (`_instructions/`) | 텔레그램으로 지시 가능. 파워유저 기능은 필요 느낄 때 | 미정 |
+| 영상 URL 트랜스크립트 추출 (YouTube 등) | 현재 curl로 HTML만 가져와 제목/설명만 분석됨. `yt-dlp --write-auto-sub`로 자막 추출 후 본문으로 분석 필요 | Phase 2 |
 | 파일 첨부 캡처 (PDF, 이미지 등) | Phase 1a는 URL + 텍스트만. 파일은 처리 파이프라인이 다름 | Phase 4 |
 | `content_hash` (SHA-256) 멱등성 | URL grep으로 Phase 1a 충분. 같은 URL 내용 변경 감지는 볼트 커진 후 | 볼트 규모 확대 시 |
 | SQLite 파생 인덱스 (`note_contexts`, `note_tags`) | grep 검색으로 충분. M:N 쿼리 성능 필요 시 도입 | QMD 통합(Phase 1d) 또는 볼트 규모 확대 시 |
