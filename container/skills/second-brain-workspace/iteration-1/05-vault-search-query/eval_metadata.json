@@ -1,0 +1,23 @@
+{
+  "eval_id": 5,
+  "eval_name": "Vault Search Query",
+  "prompt": "User asks about DDD Aggregate boundaries — agent should search vault and answer from notes",
+  "assertions": [
+    {
+      "name": "vault_searched",
+      "text": "Agent searches the vault for DDD/Aggregate-related keywords before answering"
+    },
+    {
+      "name": "vault_content_referenced",
+      "text": "Answer references specific content from the existing vault note (트랜잭션 일관성, Aggregate를 작게 유지, ID로만 참조 등)"
+    },
+    {
+      "name": "grounded_not_general",
+      "text": "Agent grounds the answer in vault contents, not purely general knowledge"
+    },
+    {
+      "name": "no_capture_attempt",
+      "text": "Agent does NOT attempt to capture the question as a new note"
+    }
+  ]
+}

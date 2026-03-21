@@ -1,0 +1,27 @@
+{
+  "eval_id": 4,
+  "eval_name": "List Unclassified + Classify Move",
+  "prompt": "User asks for unclassified notes, then moves RSC note to areas/frontend",
+  "assertions": [
+    {
+      "name": "lists_pending_notes",
+      "text": "Agent lists inbox notes with pending_review status including the RSC note title"
+    },
+    {
+      "name": "file_moved",
+      "text": "File physically moved from inbox/ to areas/frontend/"
+    },
+    {
+      "name": "status_updated",
+      "text": "Frontmatter status changed from pending_review to classified"
+    },
+    {
+      "name": "contexts_updated",
+      "text": "Frontmatter contexts array includes areas/frontend"
+    },
+    {
+      "name": "git_committed",
+      "text": "A git commit was created for the classification move"
+    }
+  ]
+}

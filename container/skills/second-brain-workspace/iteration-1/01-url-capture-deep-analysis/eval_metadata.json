@@ -1,0 +1,31 @@
+{
+  "eval_id": 1,
+  "eval_name": "URL Capture + Deep Analysis",
+  "prompt": "User sends https://martinfowler.com/bliki/ValueObject.html — agent captures with full deep analysis pipeline",
+  "assertions": [
+    {
+      "name": "frontmatter_completeness",
+      "text": "Note has YAML frontmatter with title, source URL, source_type: web, captured timestamp (ISO 8601 +09:00), tags array, ai_summary"
+    },
+    {
+      "name": "deep_analysis_sections",
+      "text": "Note body contains structured sections: 핵심 주장, 주요 논거 및 근거, 인사이트, 실용적 시사점"
+    },
+    {
+      "name": "vault_connection_wikilink",
+      "text": "Note references existing DDD Aggregate note via Obsidian wikilink [[...]] in 볼트 연결 section"
+    },
+    {
+      "name": "filename_format",
+      "text": "File saved as YYYYMMDD-HHMMSS-slug.md with ASCII-only slug, max 60 chars"
+    },
+    {
+      "name": "classification_existing_label",
+      "text": "Classification recommendation labels resources/ddd-patterns as (기존) not (신규)"
+    },
+    {
+      "name": "recommendation_summary",
+      "text": "Recommendation includes concise summary lines for 핵심, 인사이트, 시사점"
+    }
+  ]
+}

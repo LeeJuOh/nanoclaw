@@ -1,0 +1,19 @@
+{
+  "eval_id": 2,
+  "eval_name": "Duplicate URL Detection",
+  "prompt": "User sends URL already captured — agent should detect duplicate and not re-capture",
+  "assertions": [
+    {
+      "name": "duplicate_detected",
+      "text": "Agent detects the URL is already captured by matching normalized URL against existing notes"
+    },
+    {
+      "name": "existing_note_referenced",
+      "text": "Reply includes the existing note title and its file path"
+    },
+    {
+      "name": "no_new_note_created",
+      "text": "Agent does NOT create a new note file or attempt capture"
+    }
+  ]
+}
