@@ -11,11 +11,11 @@ source: "{url}"
 source_type: web
 captured: YYYY-MM-DDTHH:MM:SS+09:00
 processed: YYYY-MM-DDTHH:MM:SS+09:00
-status: raw
+status: pending_review
 tags: [{tag1}, {tag2}, ...]
 contexts: []
 ai_summary: "{2-3문장 요약}"
-captured_via: telegram
+captured_via: telegram # telegram | whatsapp | slack | discord | claude-code
 ---
 
 # {title}
@@ -55,11 +55,41 @@ captured_via: telegram
 
 ## Text Memo Note Format
 
-Same as URL Capture but:
+```markdown
+---
+title: "{auto-generated from content}"
+source_type: memo
+captured: YYYY-MM-DDTHH:MM:SS+09:00
+processed: YYYY-MM-DDTHH:MM:SS+09:00
+status: pending_review
+tags: [{tag1}, {tag2}]
+contexts: []
+ai_summary: "{1문장 요약}"
+captured_via: telegram
+---
+
+# {title}
+
+{원문 텍스트}
+
+---
+
+## 핵심 주장
+
+- {메모에서 추출한 핵심 아이디어}
+
+## 실용적 시사점
+
+- {행동으로 옮길 수 있는 것}
+```
+
+Differences from URL capture:
 - No `source` field
 - `source_type: memo`
-- Title auto-generated from content
-- Slug from first ~60 chars of text
+- Title auto-generated (15자 이내, 핵심 반영)
+- Body: 원문 텍스트 먼저, 구조화 분석은 뒤에
+- 200자 이하 짧은 메모: 핵심 주장 + 시사점만 (다른 섹션 생략)
+- 볼트 연결은 관련 노트가 있을 때만
 
 ## Analysis Depth Guideline
 
