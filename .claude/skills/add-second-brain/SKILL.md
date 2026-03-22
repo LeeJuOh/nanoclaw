@@ -98,6 +98,7 @@ done
 .Trash/
 *.tmp
 .git-credentials
+_logs/
 ```
 
 **_settings.yaml** — create if not exists:
@@ -282,20 +283,31 @@ git add groups/<FOLDER>/CLAUDE.md
 git commit -m "feat: add second-brain group CLAUDE.md"
 ```
 
-## Phase 5: Schedule + Verify
+## Phase 5: Schedules + Verify
+
+### Git push schedule (required)
+
+Register a scheduled task that pushes vault commits every 10 minutes. The capture pipeline only commits locally — this task handles sync to remote.
+
+**Skip if vault has no remote** (checked in Phase 2).
+
+```bash
+TASK_ID="sb-git-push-$(date +%s)"
+NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+sqlite3 store/messages.db "INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at) VALUES ('$TASK_ID', '<FOLDER>', '<CHAT_JID>', 'cd /workspace/extra/vault && git add -A && git diff --cached --quiet || git commit -m \"sync: auto-push\" && git push 2>&1 || echo \"push failed, will retry\"', 'interval', '600000', 'isolated', '$NOW', 'active', '$NOW')"
+```
 
 ### Weekly review schedule (optional)
 
 AskUserQuestion: 주간 리뷰 스케줄을 설정할까요? 매주 일요일 09:00에 미분류 노트를 정리합니다. (yes / no / 다른 시간)
 
-If yes:
+If yes, register directly:
 
-Tell the user to send this in their **main** chat:
-
-> second-brain 그룹에 스케줄 등록해줘:
-> - 프롬프트: "주간 리뷰 실행해줘"
-> - 스케줄: cron, 매주 일요일 09:00 (0 9 * * 0)
-> - 대상 그룹: second-brain의 JID
+```bash
+TASK_ID="sb-weekly-review-$(date +%s)"
+NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+sqlite3 store/messages.db "INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at) VALUES ('$TASK_ID', '<FOLDER>', '<CHAT_JID>', '주간 리뷰 실행해줘', 'cron', '0 9 * * 0', 'group', '$NOW', 'active', '$NOW')"
+```
 
 ### Verify
 
@@ -343,6 +355,6 @@ tail -f logs/nanoclaw.log
 1. 그룹 삭제: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE folder = '<FOLDER>'"`
 2. 그룹 폴더 삭제: `rm -rf groups/<FOLDER>`
 3. mount-allowlist에서 볼트 항목 제거 (선택)
-4. 스케줄 태스크 제거 (있는 경우)
+4. 스케줄 태스크 제거: `sqlite3 store/messages.db "DELETE FROM scheduled_tasks WHERE group_folder = '<FOLDER>'"`
 5. 볼트 자체는 유지됨 (GitHub repo + 로컬 파일 보존)
 6. 서비스 재시작: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`

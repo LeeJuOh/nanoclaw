@@ -42,4 +42,4 @@ groups/telegram_second-brain/*
 .nanoclaw/
 
 agents-sdk-docs
-references
+/references
