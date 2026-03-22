@@ -12,7 +12,13 @@
       "Bash(npm --version)",
       "Bash(npm install:*)",
       "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(Object.keys\\(p.scripts\\)\\)\")",
-      "Bash(env -i HOME=$HOME PATH=$PATH npm run format:fix)"
+      "Bash(env -i HOME=$HOME PATH=$PATH npm run format:fix)",
+      "Bash(jq -r .[])",
+      "Bash(sqlite3 /Users/ljo/Desktop/project/linkDive/nanoclaw/store/messages.db \"SELECT container_config FROM registered_groups WHERE folder = ''''telegram_second-brain'''';\")",
+      "Bash(ls /Users/ljo/Desktop/project/linkDive/nanoclaw/*.db)",
+      "Bash(ls /Users/ljo/Desktop/project/linkDive/nanoclaw/data/*.db)",
+      "Bash(sqlite3 /Users/ljo/Desktop/project/linkDive/nanoclaw/nanoclaw.db .schema)",
+      "Bash(sqlite3:*)"
     ]
   }
 }

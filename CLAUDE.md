@@ -44,6 +44,22 @@ Four types of skills exist in NanoClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) f
 
 Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, the four skill types and their guidelines, SKILL.md format rules, PR requirements, and the pre-submission checklist (searching for existing PRs/issues, testing, description format).
 
+## References
+
+`references/` 디렉터리의 프로젝트들은 모두 세컨드 브레인 그룹 개발을 위한 참고 자료.
+
+| Project | Type | Purpose |
+|---------|------|---------|
+| [khoj](references/khoj) | Python | AI 세컨드 브레인 — 전체 아키텍처, 자동화, 에이전트 설계 참고 |
+| [memsearch](references/memsearch) | Python | 시맨틱 메모리 검색 엔진 — 임베딩, 하이브리드 검색(BM25+벡터), CC 플러그인 참고 |
+| [qmd](references/qmd) | Bun/TS | 마크다운 문서 쿼리 엔진 — FTS5, sqlite-vec, MCP 서버, 컬렉션 관리 참고 |
+| [claudian](references/claudian) | Node/TS | Obsidian Claude Code 플러그인 — 사이드바 UI, SDK 통합, 스킬/에이전트 구조 참고 |
+| [openclaw](references/openclaw) | Node/TS | 오픈소스 에이전트 프레임워크 (nanoclaw upstream) — 플러그인 시스템, 채널 아키텍처 참고 |
+| [PageIndex](references/PageIndex) | — | Vectorless RAG — 추론 기반 검색, 벡터 없는 접근 방식 참고 |
+| [cli-jaw](references/cli-jaw) | Node/TS | 멀티 AI 엔진 CLI 어시스턴트 — 여러 LLM 통합 패턴 참고 |
+| [obsidian-skills](references/obsidian-skills) | — | Obsidian 에이전트 스킬 — 스킬 스펙, 구조화된 에이전트 스킬 참고 |
+| [symphony](references/symphony) | — | 자율 코딩 에이전트 오케스트레이터 — Linear 연동, 에이전트 스웜 관리 참고 |
+
 ## Development
 
 Run commands directly—don't tell the user to run them.
