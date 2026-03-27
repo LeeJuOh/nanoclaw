@@ -1,7 +1,7 @@
 # Second Brain CODE Redesign — Design Spec
 
 > **Date**: 2026-03-22
-> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), Express 3분할+훅 구조·검수 반영 (2026-03-27)
+> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), Express 3분할+훅 구조·검수 반영 (2026-03-27), 2차 검수 반영 (2026-03-27)
 > **Context**: PRD 검수 + 참조 프로젝트 8개 코드 분석 + NotebookLM(BASB 원전) 검증
 
 ---
@@ -377,7 +377,7 @@ container/skills/
 | **Ambient** (암묵적 활용) | SessionStart 훅 (`vault-context.sh`) | 모든 대화에서 에이전트가 자연스럽게 vault grep. 스킬 트리거 불필요 |
 | **Push** (능동 추천) | 스케줄 태스크 → para-brain | task-scheduler가 프롬프트 전달 → 에이전트가 para-brain 사용 |
 
-`vault-context.sh`는 para-pipeline 스킬 폴더 안에 포함되어 플러그인 배포 시 함께 동기화됨. NanoClaw, 독립 Claude Code 플러그인 양쪽에서 작동.
+`vault-context.sh`는 para-pipeline 스킬 폴더 안에 포함되어 플러그인 배포 시 함께 동기화됨. **para-pipeline에 배치하는 이유**: 이 훅은 vault 경로 존재 여부를 체크하는데, vault 마운트와 캡처 파이프라인이 동일 인프라를 공유하므로 배포 단위로 para-pipeline이 자연스러움. 논리적으로는 Express Ambient(para-brain 영역)이지만, 별도 패키지로 분리하면 배포 복잡도만 증가. NanoClaw, 독립 Claude Code 플러그인 양쪽에서 작동.
 
 **para-pipeline (자동):**
 
@@ -477,7 +477,7 @@ fi
 
 **왜 A/B가 아닌가:**
 
-- **A (단일 스킬)**: 현재 340줄이 Capture만으로 이미 이 크기. O+D+E를 넣으면 600줄+. 컨테이너 에이전트의 스킬 컨텍스트가 비대해지면 각 단계의 수행 품질이 저하됨. "URL이 왔을 때"와 "질문이 왔을 때"는 인지적으로 완전히 다른 모드인데 하나의 스킬에 우겨넣으면 트리거 분별이 흐려짐.
+- **A (단일 스킬)**: 현재 373줄이 Capture만으로 이미 이 크기. O+D+E를 넣으면 600줄+. 컨테이너 에이전트의 스킬 컨텍스트가 비대해지면 각 단계의 수행 품질이 저하됨. "URL이 왔을 때"와 "질문이 왔을 때"는 인지적으로 완전히 다른 모드인데 하나의 스킬에 우겨넣으면 트리거 분별이 흐려짐.
 - **B (4분할)**: 개인 도구에 스킬 4개는 과잉. `container/skills/` 전 그룹 로드 문제도 있고, `para-distill`은 독립 스킬로 존재할 만큼 호출 빈도가 높지 않음. 분리의 이론적 장점(독립 테스트)이 실전 비용(4개 eval, 4개 트리거 관리)을 정당화하지 못함.
 
 **왜 C인가:**
@@ -504,28 +504,55 @@ fi
 - 기존 second-brain eval의 Capture 케이스는 para-pipeline으로 거의 그대로 이관
 
 **예상 최종 크기** (Phase 1d 기준):
-- para-pipeline: ~350줄 (현재 second-brain Capture + Distill 자동화 추가)
+- para-pipeline: ~380줄 (현재 second-brain 373줄 기반 + Distill 자동화 추가)
 - para-brain: ~250줄 (Organize ~150줄 + Express Pull ~60줄 + Express Push ~40줄) — Express Ambient가 훅으로 빠져서 기존 예상(~300줄)보다 축소
 - vault-context.sh: ~15줄 (SessionStart 훅)
-- 합계 ~600줄이지만, 스킬 분리 + 훅으로 에이전트는 한 세션에 필요한 컨텍스트만 소비
+- 합계 ~645줄이지만, 스킬 분리 + 훅으로 에이전트는 한 세션에 필요한 컨텍스트만 소비
 
 ### 4.5 NanoClaw 스킬 메커니즘 — 설계 근거
 
 접근 C가 NanoClaw 아키텍처에서 작동하는 방식:
 
-1. **스킬 자동 로드**: `container-runner.ts:149-159`에서 매 컨테이너 세션마다 `container/skills/`의 모든 스킬을 `~/.claude/skills/`로 sync. Claude Code SDK가 자동 발견.
+1. **스킬 자동 로드**: `container-runner.ts:151-161`에서 매 컨테이너 세션마다 `container/skills/`의 모든 스킬을 `~/.claude/skills/`로 sync. Claude Code SDK가 자동 발견.
 2. **에이전트 기반 선택**: NanoClaw는 스킬을 pre-select하지 않음. 모든 스킬이 로드된 상태에서 에이전트가 프롬프트/컨텍스트 기반으로 어떤 스킬을 사용할지 결정.
 3. **한 세션 복수 스킬**: 에이전트는 한 세션에서 여러 스킬을 자유롭게 사용 가능.
 4. **스케줄 태스크**: `task-scheduler.ts`에서 due task의 `prompt` 필드를 컨테이너에 전달 → 에이전트가 프롬프트를 보고 적절한 스킬 사용.
 
 따라서 `para-pipeline`과 `para-brain` 2개 스킬이 같은 그룹에 로드되어도, 에이전트가 메시지 유형에 따라 자연스럽게 올바른 스킬을 선택함. 스킬 간 명시적 호출 메커니즘은 불필요 — vault 파일이 인터페이스.
 
+**복합 메시지 처리**: "이 URL 캡처하고 resources/ddd로 분류해줘"처럼 Capture + Organize가 한 메시지에 섞인 경우, 에이전트가 한 세션에서 para-pipeline(캡처) → para-brain(분류)을 순차 사용. 이는 항목 3(한 세션 복수 스킬)으로 자연스럽게 지원됨. 단, para-pipeline은 항상 inbox에 저장하므로, 에이전트가 캡처 완료 후 para-brain으로 분류를 실행하는 순서가 보장되어야 함 — SKILL.md에 "URL이 포함된 복합 메시지: 캡처 먼저 → 분류는 캡처 완료 후" 가이드를 포함.
+
+**SessionStart 훅 등록 메커니즘**:
+
+`vault-context.sh`는 스킬 파일과 달리 Claude Code의 `settings.json`에 훅으로 등록해야 동작함. `fs.cpSync`로 스킬 폴더를 sync하는 것만으로는 훅이 자동 활성화되지 않음.
+
+등록 방식 (NanoClaw 컨테이너):
+- `container-runner.ts`의 `buildVolumeMounts()` 이후, 컨테이너 내부 `~/.claude/settings.json`에 SessionStart 훅 엔트리를 추가하는 로직 필요
+- 훅 등록 예시:
+  ```json
+  {
+    "hooks": {
+      "SessionStart": [{
+        "type": "command",
+        "command": "bash ~/.claude/skills/para-pipeline/scripts/vault-context.sh"
+      }]
+    }
+  }
+  ```
+- `container-runner.ts`에서 `settings.json`을 읽고 → `hooks.SessionStart` 배열에 엔트리 추가 → 다시 쓰는 방식. 기존 훅이 있으면 병합
+
+등록 방식 (독립 Claude Code 플러그인):
+- 플러그인 설치 시 `settings.json`에 자동 등록 (플러그인 manifest의 hooks 필드 활용)
+- 또는 `/add-second-brain` 스킬이 설치 과정에서 settings.json에 훅을 추가
+
 **제약 및 대응**: `container/skills/`의 모든 스킬은 모든 그룹에 로드됨. para-* 2개가 second-brain 외 그룹에도 로드되어 두 가지 문제 발생:
 
 1. **오발동 위험**: 다른 그룹에서 URL을 보내면 para-pipeline이 트리거될 수 있음
 2. **불필요한 컨텍스트 증가**: 에이전트의 스킬 목록이 길어짐
 
-**대응 방안**: 스킬 description에 vault 경로 존재 여부 확인 가드를 포함. para-pipeline/para-brain 모두 `$VAULT` 경로가 마운트되지 않은 그룹에서는 스킬 사용을 건너뜀. 예: "Only use this skill when the vault path ($VAULT or /workspace/extra/vault) exists."
+**대응 방안 (이중 가드)**:
+1. **description 가드** (트리거 억제): 스킬 description에 vault 존재 조건을 포함. 예: "Only use this skill when the vault path ($VAULT or /workspace/extra/vault) exists."
+2. **SKILL.md 본문 early return 가드** (런타임 안전장치): SKILL.md 최상단에 "**사전 확인**: `$VAULT` 경로가 존재하지 않으면 이 스킬을 사용하지 마세요. 사용자에게 '이 그룹에는 vault가 설정되어 있지 않습니다'라고 안내하고 즉시 종료하세요." 에이전트가 description 가드를 무시하고 트리거하더라도 본문 가드에서 중단됨.
 
 ---
 
@@ -662,7 +689,9 @@ ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, D
 
 ### 7.2 Reweave (역연결)
 
-캡처/분류 시 관련 기존 노트 검색 → 역연결 추가.
+캡처/분류 시 관련 기존 노트 검색 → **양방향** 역연결 추가.
+
+**양방향 연결**: Reweave는 새 노트 → 기존 노트, 기존 노트 → 새 노트 양쪽에 `related:` 엔트리를 추가. 단방향이면 한쪽에서 탐색 시 연결을 발견할 수 없음. arscontexta의 Reweave도 양방향. 구체적으로: 새 노트 A를 `resources/ddd/`로 분류할 때, (a) 기존 노트 B의 `related:`에 A 추가, (b) 새 노트 A의 `related:`에도 B 추가.
 
 **Phase 1a 품질 기준 (보수적)**: grep 기반에서는 연결 노이즈가 발생하기 쉬우므로 보수적으로 운영:
 - **threshold**: 같은 PARA 경로 + 태그 2개 이상 겹침일 때만 `related:` 추가
@@ -708,7 +737,13 @@ related:                   # Reweave로 추가된 역연결
 
 **distill_layer 설계 결정**:
 - `ai_distill_depth`: AI가 캡처 시 생성한 최고 레이어. 현재는 항상 4 (Layer 1~4 일괄 생성). **존재 이유**: 향후 부분 Distill 지원 시 필요 — 예: 크롤링 실패로 본문이 짧아 Layer 2까지만 생성한 경우, 메모 캡처(source_type: memo)에서 Layer 축소 적용 시, 또는 LLM 비용 절감을 위해 캡처 시 Layer 2까지만 자동 생성하고 Layer 3~4는 수동 트리거로 전환하는 정책 변경 시. 이 시나리오가 발생하기 전까지는 항상 4이며, 필터/정렬 기준으로 사용하지 않음.
-- `distill_layer`: **사용자가 확인/승인한 최고 레이어**. 캡처 직후 0 (미확인). 사용자가 노트를 열어보고 분류하면 1~2, 수동 재정제하면 3~4. 이 필드가 필터/정렬 기준이 됨 (예: "아직 안 본 노트" = `distill_layer: 0`).
+- `distill_layer`: **사용자가 확인/승인한 최고 레이어**. 캡처 직후 0 (미확인). 이 필드가 필터/정렬 기준이 됨 (예: "아직 안 본 노트" = `distill_layer: 0`).
+  - **갱신 규칙**:
+    - `0 → 1`: 사용자가 para-brain으로 **분류를 실행**했을 때 (inbox → PARA 경로 이동 = 노트 내용을 확인했다는 신호)
+    - `1 → 2`: 사용자가 "다시 정리해줘" 등 **수동 Distill을 요청**했을 때 (AI가 Layer 2~3을 재생성)
+    - `2 → 4`: 사용자가 **Executive Summary를 직접 수정**했거나 "핵심만 뽑아줘"로 Layer 4 재정제를 요청했을 때
+    - Layer 3은 독립 갱신 없음 — Layer 2→4로 한 번에 올라감 (수동 Distill 시 Layer 2~4를 함께 재실행)
+  - **자동 갱신 금지**: 에이전트가 임의로 distill_layer를 올리지 않음. 반드시 사용자 액션(분류, 수동 Distill, 직접 편집)에 의해서만 갱신
 
 **ai_summary 통합**: 기존 schema의 `ai_summary` 하나로 통합. Executive Summary(한 줄)와 상세 요약(2-3문장)을 별도 필드로 나누지 않음 — 본문 상단의 `> **Executive Summary**: ...` 블록이 한 줄 핵심을 담당하고, frontmatter `ai_summary`는 2-3문장 요약.
 
@@ -760,7 +795,7 @@ auto_classify:
 
 ## 9. 마이그레이션 전략
 
-현재 `second-brain` 스킬(340줄, 96% pass rate)에서 접근 C로의 전환:
+현재 `second-brain` 스킬(373줄, 96% pass rate)에서 접근 C로의 전환:
 
 ### 9.1 전환 계획
 
@@ -770,7 +805,7 @@ auto_classify:
 | **기존 테스트** | Capture 테스트(8개) → para-pipeline으로 이관. Organize 테스트(3개) → para-brain으로 이관. 크롤 진단(1개) → para-pipeline. 상세 매핑은 §10.1 참조 |
 | **전환 방식** | Atomic swap (기존 삭제 + 신규 생성 동시) |
 | **그룹 CLAUDE.md** | 스킬 참조 업데이트 (second-brain → para-pipeline, para-brain) |
-| **`_settings.yaml` 마이그레이션** | `auto_classify: false` (boolean) → `auto_classify: { enabled: false, trigger: on_capture }` (object)로 변환. 한 줄 변경이므로 전환 시 즉시 수행. 프롬프트 레벨 하위 호환 해석에 의존하지 않음 |
+| **`_settings.yaml` 마이그레이션** | `auto_classify: false` (boolean) → `auto_classify: { enabled: false, trigger: on_capture }` (object)로 변환. 한 줄 변경이므로 전환 시 즉시 수행. 프롬프트 레벨 하위 호환 해석에 의존하지 않음. **참고**: 현재 SKILL.md에는 오브젝트 형태가 이미 기술되어 있으나 실제 vault의 `_settings.yaml`은 아직 boolean. 전환 시 vault 파일을 실제로 변환해야 함 |
 | **vault 호환** | 100%. 기존 노트 그대로 유지. 새 frontmatter 필드(`ai_distill_depth`, `distill_layer`)는 기존 노트에 없어도 무방 (기본값 처리) |
 | **inbox 기존 노트** | 현재 inbox에 다수(~47개) 미분류 노트 존재. 전환 직후 "inbox > 10개 알림"이 즉시 발동하므로, 마이그레이션 시 일괄 분류를 먼저 수행하거나 초기 threshold를 임시 상향(예: 30개) |
 
@@ -806,7 +841,7 @@ auto_classify:
 | Capture + Distill | 1a | URL → inbox/ 파일 + Layer 2(볼드), Layer 4(Executive Summary) 포함 | para-pipeline eval |
 | Organize + Reweave | 1a | 분류 추천 정확도 + related 역연결 관련성 | para-brain eval |
 | Express Pull | 1b | vault 검색 시 관련 노트 적중률 + match 설명 품질 | 자동: 검색 결과 ≥ 1개, match 설명 필드 존재, 출처 경로 유효. 수동: 반환 노트의 실제 관련성 |
-| Express Ambient | 1a | 일반 질문 시 vault 자동 참조 여부 | 자동: 훅 컨텍스트 주입 확인, vault grep 실행 여부. 수동: 인용 품질 |
+| Express Ambient | 1a | 일반 질문 시 vault 자동 참조 여부 | 출력 기반: vault에 관련 노트가 있을 때 일반 질문을 하면 (a) 응답에 vault 노트 인용이 포함되는지, (b) vault 결과와 일반 지식이 구분 표시되는지 검증. 훅 내부 동작(컨텍스트 주입, grep 실행)은 외부 관찰 불가하므로 출력만 판정 |
 | Express Push | 1d | 능동 추천의 연관성 + 사용자 반응 | 자동: 추천 노트 ≥ 1개, related에 미존재. 수동: 추천 → 사용자 열람/활용률 |
 
 **Reweave eval 시나리오 (Phase 1a):**
@@ -821,17 +856,20 @@ auto_classify:
 - [x] `distill_layer` 필드 → `ai_distill_depth`(AI) + `distill_layer`(인간 확인)로 분리 (§7.3)
 - [x] QMD 통합 시점 → Phase 1d 유지. Express Pull(1b)은 grep, Express Push(1d)는 QMD 전제 (§5)
 - [x] 분류와 캡처 분리 → 캡처는 항상 inbox + 추천만, 자동분류는 para-brain의 별도 기능 (§7.4). `_settings.yaml` 스키마를 `auto_classify: boolean` → `auto_classify: {enabled, trigger, schedule}` 오브젝트로 변경
+- [x] SessionStart 훅 등록 방식 → NanoClaw: container-runner에서 settings.json에 훅 엔트리 추가. 독립 플러그인: 설치 시 settings.json에 자동 등록 (§4.5)
+- [x] `distill_layer` 갱신 규칙 → 분류 시 0→1, 수동 Distill 시 1→2, Layer 4 재정제 시 2→4. 자동 갱신 금지 (§7.3)
 
-**미해소:**
-- [ ] Express 능동 추천의 구체적 스케줄/트리거 (Phase 1d 시점에 결정)
-- [ ] Distill 수동 트리거의 UX (메시지 명령? 스케줄?) — para-brain Phase 1a에서 "이 노트 다시 정리해줘" 메시지 명령으로 시작
+**미해소 — Phase 1a 구현 전 결정 필요:**
 - [ ] auto_classify trigger: on_capture의 정확한 실행 시점 — para-pipeline이 캡처 완료 메시지를 보낸 뒤 para-brain이 같은 세션에서 자동분류를 실행할지, 별도 세션(스케줄)으로 실행할지
-- [ ] Claude Code vault 접근 방식 (MCP? 직접 읽기?) — QMD MCP 서버가 유력하지만 Phase 1d+
-- [ ] Reweave의 자동화 수준 — Phase 1a에서는 분류 시에만 트리거, 추후 확장 검토
 - [ ] Reweave write-path 예외를 PRD에 반영 — §7.2에서 `related:` 필드 에이전트 수정 허용을 결정했으나, PRD의 write-path 모델에 아직 미반영. §1.1a의 push/commit 불일치와 함께 PRD 수정 시 포함해야 함
 - [ ] PRD 불일치 수정 — §1.1a에서 발견한 push/commit 불일치(PRD "git push" vs 구현 "commit only, scheduler push")를 PRD에 반영
+
+**미해소 — 나중 Phase에서 결정 가능:**
+- [ ] Express 능동 추천의 구체적 스케줄/트리거 (Phase 1d 시점에 결정)
+- [ ] Distill 수동 트리거의 UX (메시지 명령? 스케줄?) — para-brain Phase 1a에서 "이 노트 다시 정리해줘" 메시지 명령으로 시작, 빈도 보고 발전
+- [ ] Claude Code vault 접근 방식 (MCP? 직접 읽기?) — QMD MCP 서버가 유력하지만 Phase 1d+
+- [ ] Reweave의 자동화 수준 — Phase 1a에서는 분류 시에만 트리거, 추후 확장 검토
 - [ ] 주간 리뷰 스케줄 커스터마이즈 — 현재 "일요일 09:00" 하드코딩. `_settings.yaml`에 설정 가능하게 할지 (Phase 1a에선 하드코딩 OK, 추후 검토)
-- [ ] SessionStart 훅 등록 방식 — `vault-context.sh`를 NanoClaw container-runner에서 자동 등록할지, 플러그인 설치 시 settings.json에 추가할지. 양쪽 호환 필요
 
 ---
 
