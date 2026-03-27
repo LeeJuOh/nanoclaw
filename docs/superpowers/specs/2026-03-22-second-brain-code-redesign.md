@@ -1,7 +1,7 @@
 # Second Brain CODE Redesign — Design Spec
 
 > **Date**: 2026-03-22
-> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), 스펙 수정 중
+> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), Express 3분할+훅 구조·검수 반영 (2026-03-27)
 > **Context**: PRD 검수 + 참조 프로젝트 8개 코드 분석 + NotebookLM(BASB 원전) 검증
 
 ---
@@ -137,6 +137,8 @@ PRD(line 231)에서는 "git add + commit + push (push 실패 시 다음 기회�
 AI가 Layer 2~4를 자동화하고 사용자는 제목/요약만 다듬는 방식이 효율적.
 
 > **트레이드오프 선언**: BASB 원전의 Progressive Summarization은 시간차를 두고 반복 접근하며 정제하는 것이 핵심. 우리는 이를 **"시간차 정제"가 아닌 "깊이별 자동 추출"로 재해석**한다. 캡처 시점에 AI가 Layer 1~4를 일괄 생성하는 것은 "one-shot summarization"이지 원전의 "progressive"는 아님. 이 트레이드오프를 수용하는 이유: (1) NotebookLM BASB 검증에서 AI 자동화가 효율적이라는 근거, (2) 개인 도구에서 시간차 수동 정제의 현실적 마찰이 높음, (3) 수동 재정제(`para-brain`의 Distill)로 시간차 정제 경로는 열어둠.
+>
+> **`distill_layer` 활용으로 "자연 선택" 보완**: one-shot 생성의 약점(사용자가 읽지 않은 노트에도 Layer 4 존재)을 `distill_layer: 0`(미확인) 필드로 보완한다. 주간 리뷰에서 "이번 주 캡처 N개 중 미확인 M개" 리포트를 제공하고, 사용자가 분류/열람하면 distill_layer를 갱신. 이를 통해 BASB의 "반복 접근하면서 진짜 쓸모있는 것만 살아남는" 자연 선택 효과를 간접적으로 구현.
 
 **Express**: 중간 작업물(Intermediate Packets)을 재조합해 새로운 결과물 생성. AI가 현재 작업 맥락을 파악해 과거 노트를 **능동적으로 추천(Push)**하는 것은 BASB 철학과 완벽히 일치.
 
@@ -344,26 +346,38 @@ NotebookLM이 제안한 패턴을 반영. **자동으로 돌아가는 것**과 *
 container/skills/
   para-pipeline/
     SKILL.md              ← Capture + Distill (자동 파이프라인)
+    scripts/
+      vault-context.sh    ← SessionStart 훅: vault 인지 컨텍스트 주입
     references/
       note-template.md
       platform-strategies.md
       schema.md
       distill-layers.md
   para-brain/
-    SKILL.md              ← Organize + Express (사용자 인터랙션)
+    SKILL.md              ← Organize + Express Pull (사용자 인터랙션)
     references/
       para.md
       express-patterns.md
 ```
 
-**분리 원칙:** "사용자 개입 필요 여부"
+**분리 원칙:** "사용자 개입 필요 여부" + Express 3분할
 
-| | para-pipeline (자동) | para-brain (인터랙션) |
-|--|---------------------|----------------------|
-| **트리거** | URL 감지, "캡처해" | 그 외 전부 |
-| **성격** | 빠르게 처리하고 결과만 보고 | 대화형, 사용자 판단 필요 |
-| **CODE** | Capture + Distill | Organize + Express |
-| **사용자 개입** | 없음 (결과 알림만) | 분류 승인, 질문 답변, 추천 피드백 |
+| | para-pipeline (자동) | para-brain (인터랙션) | SessionStart 훅 (ambient) |
+|--|---------------------|----------------------|---------------------------|
+| **트리거** | URL 감지, "캡처해" | "분류해줘", "주간 리뷰", "vault 검색", "정리해줘" 등 명시적 키워드 | 매 세션 시작 시 자동 |
+| **성격** | 빠르게 처리하고 결과만 보고 | 대화형, 사용자 판단 필요 | 에이전트 기본 행동에 vault 인지 주입 |
+| **CODE** | Capture + Distill | Organize + Express Pull | Express Ambient |
+| **사용자 개입** | 없음 (결과 알림만) | 분류 승인, 질문 답변 | 없음 (에이전트가 알아서 vault 참조) |
+
+**Express 3분할:**
+
+| Express 유형 | 처리 위치 | 설명 |
+|---|---|---|
+| **Pull** (명시적 질문) | para-brain | 사용자가 "vault에서 찾아줘", "~에 대해 알려줘" 등 vault 검색 의도가 명확할 때 |
+| **Ambient** (암묵적 활용) | SessionStart 훅 (`vault-context.sh`) | 모든 대화에서 에이전트가 자연스럽게 vault grep. 스킬 트리거 불필요 |
+| **Push** (능동 추천) | 스케줄 태스크 → para-brain | task-scheduler가 프롬프트 전달 → 에이전트가 para-brain 사용 |
+
+`vault-context.sh`는 para-pipeline 스킬 폴더 안에 포함되어 플러그인 배포 시 함께 동기화됨. NanoClaw, 독립 Claude Code 플러그인 양쪽에서 작동.
 
 **para-pipeline (자동):**
 
@@ -400,14 +414,16 @@ URL/메모 수신
 PARA 관리
   → 프로젝트/영역/리소스 생성, 아카이브, 목록
 
-질문/검색 (Phase 1b+)
-  → vault 검색 → Match 설명 + 답변 합성
+Express Pull — 명시적 vault 검색 (Phase 1b+)
+  → "vault에서 DDD 관련 노트 찾아줘" → vault 검색 → Match 설명 + 답변 합성
   → 볼트에 없으면: "볼트에 관련 자료가 없습니다" 명시 후 일반 지식으로 답변
   → 볼트 결과 + 일반 지식을 명확히 구분해서 제시
+  → ※ 일반 질문("DDD aggregate가 뭐야?")은 SessionStart 훅(Express Ambient)이 처리
 
-능동 추천 (스케줄)
+주간 리뷰 + 능동 추천 (스케줄)
   → 주간 리뷰: inbox 현황 보고 + 분류 추천 (이동 없음)
-  → 연결 발견: "이번 주 캡처와 관련된 기존 노트"
+    + distill_layer: 0 노트 현황 ("이번 주 캡처 12개 중 미확인 9개")
+  → 연결 발견: "이번 주 캡처와 관련된 기존 노트" (Phase 1d, Express Push)
   → 조건 트리거: inbox > 10개 시 자동 알림
 
 수동 Distill
@@ -417,19 +433,41 @@ PARA 관리
   → "프로젝트 X 시작" → 관련 Intermediate Packets 조립
 ```
 
+**SessionStart 훅 (`vault-context.sh`):**
+
+```bash
+#!/bin/bash
+# para-pipeline/scripts/vault-context.sh
+# SessionStart 훅으로 등록 — 매 세션 시작 시 실행
+VAULT="${VAULT:-/workspace/extra/vault}"
+if [ -d "$VAULT" ]; then
+  cat <<'CONTEXT'
+[Vault Awareness] 이 그룹에 지식 저장소(vault)가 있습니다.
+경로: $VAULT
+질문에 답할 때 `grep -ril "키워드" $VAULT/`로 관련 노트를 먼저 찾아보세요.
+관련 노트가 있으면 인용해서 답변하고, 없으면 일반 지식으로 답변하세요.
+vault 결과와 일반 지식을 명확히 구분해서 제시하세요.
+CONTEXT
+fi
+```
+
+이 훅은 스킬 트리거 없이 모든 대화에서 에이전트가 vault를 자연스럽게 참조하게 만듦. Express의 "ambient" 부분을 담당.
+
 **분류 분리 원칙:** 캡처(para-pipeline)는 절대 파일을 inbox 밖으로 이동하지 않음. 분류(para-brain)만이 파일을 이동할 수 있음. 자동분류도 para-brain의 독립 기능으로, 캡처 파이프라인에 결합되지 않음. BASB: "Capture와 Organize는 인지적 목적이 다르므로 분리가 원칙".
 
 **장점:**
 - BASB 권장 패턴 반영 (Capture+Distill 자동, Organize 의도적 분리)
-- 스킬 2개로 관리 단순
+- 스킬 2개 + 훅 1개로 관리 단순하면서도 Express 커버리지 완전
 - 자동/인터랙션 경계가 명확 → 사용자 인지 부하 낮음
-- para-pipeline은 비간섭 처리에 집중, para-brain은 대화 품질에 집중
-- Express의 능동 추천이 para-brain에 자연스럽게 통합
+- para-pipeline은 비간섭 처리에 집중, para-brain은 분류 전문가로 집중
+- Express Ambient(훅)가 모든 대화에 vault 인지를 주입 → 스킬 트리거 없이도 vault 활용
+- 훅 스크립트가 스킬 폴더 안에 포함되어 플러그인 배포 시 함께 동기화 (NanoClaw + 독립 Claude Code 양쪽 호환)
 
 **단점:**
 - para-pipeline에 Capture+Distill이 합쳐져 스킬이 다소 큼
 - Distill 수동 트리거가 para-brain에 있어서 Distill 로직이 양쪽에 분산. **해소**: para-pipeline은 "자동 Distill"(캡처 시 Layer 1~4), para-brain은 "수동 재정제"(사용자 요청 시). 공유 레퍼런스 `distill-layers.md`로 일관성 유지
 - 접근 B보다 각 단계의 독립 테스트가 어려움
+- SessionStart 훅의 컨텍스트 주입이 vault 없는 그룹에서도 실행됨. **해소**: `vault-context.sh`가 vault 경로 존재 여부를 체크하고, 없으면 아무것도 출력하지 않음
 
 ---
 
@@ -449,25 +487,27 @@ PARA 관리
 - `para-pipeline`: URL 오면 조용히 처리하고 결과만 보고 → 속도, 비간섭
 - `para-brain`: 사용자가 말 걸면 대화 → 품질, 맥락 이해
 
-**Phase별 para-brain 확장:**
+**Phase별 확장:**
 
-| Phase | para-pipeline | para-brain |
-|-------|--------------|------------|
-| **1a (현재)** | Capture + auto Distill (항상 inbox 저장, 추천만) | Organize (수동 분류 + 주간 리뷰 + Reweave) + Auto-Classification (별도 기능) ~150줄 |
-| **1b** | 동일 | + Express Pull (질문 시 vault 검색 + match 설명) |
-| **1d** | 동일 | + Express Push (QMD 통합 후 능동 추천) |
+| Phase | para-pipeline | para-brain | SessionStart 훅 | 전환 기준 |
+|-------|--------------|------------|-----------------|----------|
+| **1a (현재)** | Capture + auto Distill (항상 inbox 저장, 추천만) | Organize (수동 분류 + 주간 리뷰 + Reweave) + Auto-Classification (별도 기능) ~150줄 | vault-context.sh (Express Ambient) | — |
+| **1b** | 동일 | + Express Pull (명시적 vault 검색 + match 설명) | 동일 | para-pipeline eval 90%+, para-brain Organize eval 85%+, inbox 운영 2주+ |
+| **1d** | 동일 | + Express Push (QMD 통합 후 능동 추천) | 동일 | vault 300개 도달 or Express Pull 검색 품질 불만 or Express Push 구현 시작 |
 
 > **Phase 1c 부재 설명**: Phase 1c는 오픈소스 컨트리뷰션 PR (linkdive_research.md §실행 계획 참조)로, 스킬 아키텍처와 독립적이므로 이 스펙 범위 밖.
 
 이렇게 하면:
 - Phase 1a에서 para-brain은 ~150줄로 시작 가능 (Organize + Reweave만)
+- Express Ambient는 훅이 담당하므로 para-brain이 스킬 트리거 없는 일반 질문까지 처리할 필요 없음
 - Express Push의 feasibility 문제를 Phase 1d로 미루면서도 구조는 확보
 - 기존 second-brain eval의 Capture 케이스는 para-pipeline으로 거의 그대로 이관
 
 **예상 최종 크기** (Phase 1d 기준):
 - para-pipeline: ~350줄 (현재 second-brain Capture + Distill 자동화 추가)
-- para-brain: ~300줄 (Organize ~150줄 + Express Pull ~80줄 + Express Push ~70줄)
-- 합계 ~650줄이지만, 두 스킬 분리로 에이전트는 한 세션에 한 스킬의 컨텍스트만 소비
+- para-brain: ~250줄 (Organize ~150줄 + Express Pull ~60줄 + Express Push ~40줄) — Express Ambient가 훅으로 빠져서 기존 예상(~300줄)보다 축소
+- vault-context.sh: ~15줄 (SessionStart 훅)
+- 합계 ~600줄이지만, 스킬 분리 + 훅으로 에이전트는 한 세션에 필요한 컨텍스트만 소비
 
 ### 4.5 NanoClaw 스킬 메커니즘 — 설계 근거
 
@@ -624,6 +664,11 @@ ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, D
 
 캡처/분류 시 관련 기존 노트 검색 → 역연결 추가.
 
+**Phase 1a 품질 기준 (보수적)**: grep 기반에서는 연결 노이즈가 발생하기 쉬우므로 보수적으로 운영:
+- **threshold**: 같은 PARA 경로 + 태그 2개 이상 겹침일 때만 `related:` 추가
+- 같은 PARA 경로만 공유하고 태그 겹침이 1개 이하이면 역연결하지 않음 (예: `resources/ddd/` 안의 모든 노트가 기계적으로 연결되는 것 방지)
+- Phase 1d(QMD 도입) 이후 시맨틱 유사도 score 기반으로 threshold 전환 가능
+
 **Write-path 충돌 해소**: PRD의 write-path 모델에서 `classified` 노트는 사용자만 수정 가능. Reweave가 기존 노트를 직접 수정하면 규칙 위반. 따라서 `related:` 추가는 **write-path 예외로 명시**: frontmatter의 `related:` 필드만 에이전트가 추가 가능, 나머지 필드와 본문은 기존 규칙 유지.
 
 ```yaml
@@ -632,7 +677,7 @@ ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, D
 title: "DDD Bounded Context 정의"
 related:
   - path: "resources/ddd/20260322-aggregate-design.md"
-    reason: "동일 도메인, 상위 개념"
+    reason: "동일 도메인, 태그 겹침: aggregate, ddd"
     added: 2026-03-22
 ---
 ```
@@ -643,7 +688,7 @@ related:
 ---
 title: "Note title"
 source: "https://..."
-source_type: web           # web | memo | youtube | twitter | ...
+source_type: web           # web | memo | youtube | twitter | threads | github | reddit | medium
 captured: 2026-03-22T14:30:00+09:00
 processed: 2026-03-22T14:30:05+09:00
 status: pending_review     # raw | pending_review | classified | auto_classified
@@ -689,22 +734,24 @@ auto_classify:
   - `on_capture`: 캡처 완료 후 **별도 단계로** (para-brain이 처리)
   - `scheduled`: 설정된 시간에 inbox 일괄 처리
 
-**하위 호환**: 기존 `auto_classify: true/false` (boolean) 형식은 `auto_classify.enabled: true/false, trigger: on_capture`로 해석.
+**하위 호환**: 마이그레이션 시 `_settings.yaml`을 새 스키마로 직접 변환 (§9.1 참조). 프롬프트 레벨 해석에 의존하지 않음.
 
 ---
 
 ## 8. 비교 요약
 
-| 기준 | A: 단일 스킬 | B: CODE 4분할 | C: 2분할 |
+| 기준 | A: 단일 스킬 | B: CODE 4분할 | C: 2분할 + 훅 |
 |------|-------------|-------------|---------|
-| 스킬 수 | 1 | 4 | 2 |
-| SKILL.md 크기 | ~600줄 | ~150줄씩 | ~300줄씩 |
+| 스킬 수 | 1 | 4 | 2 + SessionStart 훅 1개 |
+| SKILL.md 크기 | ~600줄 | ~150줄씩 | ~350줄 + ~250줄 |
+| Express Ambient | 스킬 내부 | para-express 스킬 | SessionStart 훅 (스킬 트리거 불필요) |
 | 컨텍스트 공유 | 자연스러움 | vault 파일 의존 | 중간 |
 | 독립 테스트 | 어려움 | 쉬움 | 중간 |
 | 사용자 인지 부하 | 낮음 (1개) | 높음 (4개 인식) | 낮음 (자동/대화 구분) |
 | BASB 원칙 부합 | 중간 | 높음 (단계 명확) | 높음 (자동+의도적 분리) |
 | 구현 난이도 | 낮음 | 높음 | 중간 |
 | 확장성 | 비대해짐 | 좋음 | 좋음 |
+| 플러그인 배포 | OK | OK | OK (훅 스크립트 스킬 폴더 내 포함) |
 | NanoClaw 호환 | 그룹 1개 | 그룹 1개, 스킬 4개 (전 그룹 로드) | 그룹 1개, 스킬 2개 (전 그룹 로드) |
 | Express Push (Phase 1a) | grep 기반 제한적 | grep 기반 제한적 | grep 기반 제한적 |
 | Express Push (Phase 1d+) | QMD hybrid | QMD hybrid | QMD hybrid |
@@ -723,7 +770,9 @@ auto_classify:
 | **기존 테스트** | Capture 테스트(8개) → para-pipeline으로 이관. Organize 테스트(3개) → para-brain으로 이관. 크롤 진단(1개) → para-pipeline. 상세 매핑은 §10.1 참조 |
 | **전환 방식** | Atomic swap (기존 삭제 + 신규 생성 동시) |
 | **그룹 CLAUDE.md** | 스킬 참조 업데이트 (second-brain → para-pipeline, para-brain) |
+| **`_settings.yaml` 마이그레이션** | `auto_classify: false` (boolean) → `auto_classify: { enabled: false, trigger: on_capture }` (object)로 변환. 한 줄 변경이므로 전환 시 즉시 수행. 프롬프트 레벨 하위 호환 해석에 의존하지 않음 |
 | **vault 호환** | 100%. 기존 노트 그대로 유지. 새 frontmatter 필드(`ai_distill_depth`, `distill_layer`)는 기존 노트에 없어도 무방 (기본값 처리) |
+| **inbox 기존 노트** | 현재 inbox에 다수(~47개) 미분류 노트 존재. 전환 직후 "inbox > 10개 알림"이 즉시 발동하므로, 마이그레이션 시 일괄 분류를 먼저 수행하거나 초기 threshold를 임시 상향(예: 30개) |
 
 ### 9.2 기존 노트 하위 호환
 
@@ -756,8 +805,9 @@ auto_classify:
 |-----------|-------|----------|----------|
 | Capture + Distill | 1a | URL → inbox/ 파일 + Layer 2(볼드), Layer 4(Executive Summary) 포함 | para-pipeline eval |
 | Organize + Reweave | 1a | 분류 추천 정확도 + related 역연결 관련성 | para-brain eval |
-| Express Pull | 1b | vault 검색 시 관련 노트 적중률 + match 설명 품질 | 질문 → 반환 노트의 관련성 (수동 평가) |
-| Express Push | 1d | 능동 추천의 연관성 + 사용자 반응 | 추천 → 사용자 열람/활용률 |
+| Express Pull | 1b | vault 검색 시 관련 노트 적중률 + match 설명 품질 | 자동: 검색 결과 ≥ 1개, match 설명 필드 존재, 출처 경로 유효. 수동: 반환 노트의 실제 관련성 |
+| Express Ambient | 1a | 일반 질문 시 vault 자동 참조 여부 | 자동: 훅 컨텍스트 주입 확인, vault grep 실행 여부. 수동: 인용 품질 |
+| Express Push | 1d | 능동 추천의 연관성 + 사용자 반응 | 자동: 추천 노트 ≥ 1개, related에 미존재. 수동: 추천 → 사용자 열람/활용률 |
 
 **Reweave eval 시나리오 (Phase 1a):**
 
@@ -779,6 +829,9 @@ auto_classify:
 - [ ] Claude Code vault 접근 방식 (MCP? 직접 읽기?) — QMD MCP 서버가 유력하지만 Phase 1d+
 - [ ] Reweave의 자동화 수준 — Phase 1a에서는 분류 시에만 트리거, 추후 확장 검토
 - [ ] Reweave write-path 예외를 PRD에 반영 — §7.2에서 `related:` 필드 에이전트 수정 허용을 결정했으나, PRD의 write-path 모델에 아직 미반영. §1.1a의 push/commit 불일치와 함께 PRD 수정 시 포함해야 함
+- [ ] PRD 불일치 수정 — §1.1a에서 발견한 push/commit 불일치(PRD "git push" vs 구현 "commit only, scheduler push")를 PRD에 반영
+- [ ] 주간 리뷰 스케줄 커스터마이즈 — 현재 "일요일 09:00" 하드코딩. `_settings.yaml`에 설정 가능하게 할지 (Phase 1a에선 하드코딩 OK, 추후 검토)
+- [ ] SessionStart 훅 등록 방식 — `vault-context.sh`를 NanoClaw container-runner에서 자동 등록할지, 플러그인 설치 시 settings.json에 추가할지. 양쪽 호환 필요
 
 ---
 
