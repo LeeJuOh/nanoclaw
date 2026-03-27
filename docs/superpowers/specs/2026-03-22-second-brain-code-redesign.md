@@ -1,7 +1,7 @@
 # Second Brain CODE Redesign — Design Spec
 
 > **Date**: 2026-03-22
-> **Status**: Draft — 접근 방식 선택 전
+> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), 스펙 수정 중
 > **Context**: PRD 검수 + 참조 프로젝트 8개 코드 분석 + NotebookLM(BASB 원전) 검증
 
 ---
@@ -41,7 +41,7 @@ PRD(line 231)에서는 "git add + commit + push (push 실패 시 다음 기회�
 | 검색이 grep 한정 | khoj: bi-encoder+cross-encoder 2단계, Smart2Brain: BM25+HNSW hybrid, course: MongoDB Atlas hybrid |
 | Reflect/Reweave 없음 | arscontexta 6Rs: 새 캡처→기존 노트 역연결. LinkDive는 캡처→분류 일방향 |
 | 품질 필터 없음 | course: Quality Scoring Agent (0.0~1.0) — 노이즈 사전 필터링 |
-| Match 설명 없음 | Smart2Brain: 왜 이 노트가 검색됐는지 배지 표시 (title/tag/semantic/recent) |
+| Match 설명 없음 | Smart2Brain: 왜 이 노트가 검색됐는지 배지 표시 (title/alias/tag/path/heading/content/semantic/recent 8종) |
 | 범용 접근 불가 | 현재 텔레그램→NanoClaw 전용. Claude Code 등 외부 도구에서 vault 활용 불가 |
 
 ---
@@ -86,8 +86,8 @@ PRD(line 231)에서는 "git add + commit + push (push 실패 시 다음 기회�
 
 - **아키텍처**: 3-space (self/notes/ops), kernel.yaml (15개 불변 원칙)
 - **파이프라인**: 6Rs — Record → Reduce → Reflect → Reweave → Verify → Rethink
-- **서브에이전트**: /ralph — 큐 기반 태스크, 단계별 fresh context (128k)
-- **프리셋**: Research (atomicity 0.8), Personal (0.4), Experimental (사용자 정의)
+- **서브에이전트**: /ralph — 큐 기반 태스크, 단계별 fresh context (서브에이전트 스폰으로 컨텍스트 오염 방지)
+- **프리셋**: Research (atomicity 0.8), Personal (0.5), Experimental (사용자 정의)
 - **훅**: SessionStart (workspace tree 주입), PostToolUse (스키마 검증), Stop (세션 캡처)
 - **설정 도출**: 대화에서 8개 차원 추출 (atomicity, organization, linking, processing, session, maintenance, search, automation)
 - **LinkDive 시사점**: Reweave(역연결), Verify(스키마 검증), 조건 기반 유지보수 트리거 채택 가치 높음. 전체 도입은 오버엔지니어링
@@ -102,8 +102,8 @@ PRD(line 231)에서는 "git add + commit + push (push 실패 시 다음 기회�
 
 ### 2.7 obsidian-Smart2Brain — 로컬 RAG 플러그인
 
-- **검색**: MiniSearch(BM25) + HNSW(벡터) hybrid, recent boost (2.5x decay)
-- **Match 배지**: title/tag/heading/content/semantic/recent — 왜 검색됐는지 설명
+- **검색**: MiniSearch(BM25) + HNSW(벡터) hybrid, recent boost (base=2.5, decay=1.25 지수 감쇠)
+- **Match 배지**: title/alias/tag/path/heading/content/semantic/recent (8종) — 왜 검색됐는지 설명
 - **LLM**: OpenAI, Anthropic, Ollama, OpenRouter 멀티 프로바이더
 - **에이전트**: LangGraph ReactAgent, searchNotes/readContent/manageNotes 도구
 - **벡터 저장**: IndexedDB(런타임) + MessagePack(디스크) 이중 구조
@@ -135,6 +135,8 @@ PRD(line 231)에서는 "git add + commit + push (push 실패 시 다음 기회�
 - Layer 4 (보석): 내 언어로 한 줄 Executive Summary
 
 AI가 Layer 2~4를 자동화하고 사용자는 제목/요약만 다듬는 방식이 효율적.
+
+> **트레이드오프 선언**: BASB 원전의 Progressive Summarization은 시간차를 두고 반복 접근하며 정제하는 것이 핵심. 우리는 이를 **"시간차 정제"가 아닌 "깊이별 자동 추출"로 재해석**한다. 캡처 시점에 AI가 Layer 1~4를 일괄 생성하는 것은 "one-shot summarization"이지 원전의 "progressive"는 아님. 이 트레이드오프를 수용하는 이유: (1) NotebookLM BASB 검증에서 AI 자동화가 효율적이라는 근거, (2) 개인 도구에서 시간차 수동 정제의 현실적 마찰이 높음, (3) 수동 재정제(`para-brain`의 Distill)로 시간차 정제 경로는 열어둠.
 
 **Express**: 중간 작업물(Intermediate Packets)을 재조합해 새로운 결과물 생성. AI가 현재 작업 맥락을 파악해 과거 노트를 **능동적으로 추천(Push)**하는 것은 BASB 철학과 완벽히 일치.
 
@@ -370,32 +372,41 @@ URL/메모 수신
   → 플랫폼 감지 → 크롤링 → AI 분석
   → Progressive Summarization (Layer 1~4 자동)
   → Vault Connection 탐색 (기존 노트와 연결점)
-  → inbox/ 저장 + git commit
-  → 분류 추천 포함한 결과 메시지 전송
+  → inbox/ 저장 + git commit (파일은 항상 inbox에 유지)
+  → 분류 추천 포함한 결과 메시지 전송 (추천만, 이동 없음)
      "*캡처 완료: {title}*
       *핵심*: {Layer 4 요약}
       *연결*: {관련 기존 노트 2-3개}
-      배치 추천: resources/ddd (기존)"
+      배치 추천: resources/ddd (기존)
+      (답장으로 분류하거나 나중에 일괄 분류)"
 ```
 
-사용자 입장: URL 보내면 → 잠시 후 완성된 노트 + 분류 추천이 옴. 한 번의 메시지로 Capture+Distill+Organize 추천까지.
+사용자 입장: URL 보내면 → 잠시 후 완성된 노트 + 분류 추천이 옴. **파일은 항상 inbox에 저장**되고, 실제 분류(이동)는 para-brain이 담당. BASB 원칙: "Capture에서 분류를 강요하면 마찰 증가".
 
 **para-brain (인터랙션):**
 
 ```
-분류 명령
-  → 추천 수락/변경 → git mv + frontmatter 업데이트
+수동 분류 (기본)
+  → 캡처 추천에 답장 → 단건 분류
+  → "분류해줘" → inbox 전체 배치 분류 + 추천
+  → 사용자 승인/변경 → git mv + frontmatter 업데이트
   → Reweave: 관련 기존 노트에 역연결 추가
+
+자동분류 (별도 기능, 기본 꺼짐)
+  → _settings.yaml에서 auto_classify.enabled: true 설정 시 활성화
+  → trigger: on_capture | scheduled | manual_only
+  → 높은 확신도만 자동 이동, 낮은 확신도는 inbox 유지 + 추천
 
 PARA 관리
   → 프로젝트/영역/리소스 생성, 아카이브, 목록
 
-질문/검색
+질문/검색 (Phase 1b+)
   → vault 검색 → Match 설명 + 답변 합성
-  → 볼트에 없으면 일반 지식 답변 (명시)
+  → 볼트에 없으면: "볼트에 관련 자료가 없습니다" 명시 후 일반 지식으로 답변
+  → 볼트 결과 + 일반 지식을 명확히 구분해서 제시
 
 능동 추천 (스케줄)
-  → 주간 리뷰: inbox 정리 + 분류 추천
+  → 주간 리뷰: inbox 현황 보고 + 분류 추천 (이동 없음)
   → 연결 발견: "이번 주 캡처와 관련된 기존 노트"
   → 조건 트리거: inbox > 10개 시 자동 알림
 
@@ -406,17 +417,75 @@ PARA 관리
   → "프로젝트 X 시작" → 관련 Intermediate Packets 조립
 ```
 
+**분류 분리 원칙:** 캡처(para-pipeline)는 절대 파일을 inbox 밖으로 이동하지 않음. 분류(para-brain)만이 파일을 이동할 수 있음. 자동분류도 para-brain의 독립 기능으로, 캡처 파이프라인에 결합되지 않음. BASB: "Capture와 Organize는 인지적 목적이 다르므로 분리가 원칙".
+
 **장점:**
 - BASB 권장 패턴 반영 (Capture+Distill 자동, Organize 의도적 분리)
 - 스킬 2개로 관리 단순
 - 자동/인터랙션 경계가 명확 → 사용자 인지 부하 낮음
-- para-pipeline은 속도 최적화, para-brain은 품질 최적화 가능
+- para-pipeline은 비간섭 처리에 집중, para-brain은 대화 품질에 집중
 - Express의 능동 추천이 para-brain에 자연스럽게 통합
 
 **단점:**
 - para-pipeline에 Capture+Distill이 합쳐져 스킬이 다소 큼
 - Distill 수동 트리거가 para-brain에 있어서 Distill 로직이 양쪽에 분산. **해소**: para-pipeline은 "자동 Distill"(캡처 시 Layer 1~4), para-brain은 "수동 재정제"(사용자 요청 시). 공유 레퍼런스 `distill-layers.md`로 일관성 유지
 - 접근 B보다 각 단계의 독립 테스트가 어려움
+
+---
+
+### 4.4 결정: 접근 C + Phase별 para-brain 확장
+
+**접근 C를 선택한다.** 단, para-brain의 범위를 Phase별로 제한.
+
+**왜 A/B가 아닌가:**
+
+- **A (단일 스킬)**: 현재 340줄이 Capture만으로 이미 이 크기. O+D+E를 넣으면 600줄+. 컨테이너 에이전트의 스킬 컨텍스트가 비대해지면 각 단계의 수행 품질이 저하됨. "URL이 왔을 때"와 "질문이 왔을 때"는 인지적으로 완전히 다른 모드인데 하나의 스킬에 우겨넣으면 트리거 분별이 흐려짐.
+- **B (4분할)**: 개인 도구에 스킬 4개는 과잉. `container/skills/` 전 그룹 로드 문제도 있고, `para-distill`은 독립 스킬로 존재할 만큼 호출 빈도가 높지 않음. 분리의 이론적 장점(독립 테스트)이 실전 비용(4개 eval, 4개 트리거 관리)을 정당화하지 못함.
+
+**왜 C인가:**
+
+"자동으로 흘러가는 것"과 "사용자가 개입하는 것"은 본질적으로 다른 모드. 이것이 가장 자연스러운 분리축:
+
+- `para-pipeline`: URL 오면 조용히 처리하고 결과만 보고 → 속도, 비간섭
+- `para-brain`: 사용자가 말 걸면 대화 → 품질, 맥락 이해
+
+**Phase별 para-brain 확장:**
+
+| Phase | para-pipeline | para-brain |
+|-------|--------------|------------|
+| **1a (현재)** | Capture + auto Distill (항상 inbox 저장, 추천만) | Organize (수동 분류 + 주간 리뷰 + Reweave) + Auto-Classification (별도 기능) ~150줄 |
+| **1b** | 동일 | + Express Pull (질문 시 vault 검색 + match 설명) |
+| **1d** | 동일 | + Express Push (QMD 통합 후 능동 추천) |
+
+> **Phase 1c 부재 설명**: Phase 1c는 오픈소스 컨트리뷰션 PR (linkdive_research.md §실행 계획 참조)로, 스킬 아키텍처와 독립적이므로 이 스펙 범위 밖.
+
+이렇게 하면:
+- Phase 1a에서 para-brain은 ~150줄로 시작 가능 (Organize + Reweave만)
+- Express Push의 feasibility 문제를 Phase 1d로 미루면서도 구조는 확보
+- 기존 second-brain eval의 Capture 케이스는 para-pipeline으로 거의 그대로 이관
+
+**예상 최종 크기** (Phase 1d 기준):
+- para-pipeline: ~350줄 (현재 second-brain Capture + Distill 자동화 추가)
+- para-brain: ~300줄 (Organize ~150줄 + Express Pull ~80줄 + Express Push ~70줄)
+- 합계 ~650줄이지만, 두 스킬 분리로 에이전트는 한 세션에 한 스킬의 컨텍스트만 소비
+
+### 4.5 NanoClaw 스킬 메커니즘 — 설계 근거
+
+접근 C가 NanoClaw 아키텍처에서 작동하는 방식:
+
+1. **스킬 자동 로드**: `container-runner.ts:149-159`에서 매 컨테이너 세션마다 `container/skills/`의 모든 스킬을 `~/.claude/skills/`로 sync. Claude Code SDK가 자동 발견.
+2. **에이전트 기반 선택**: NanoClaw는 스킬을 pre-select하지 않음. 모든 스킬이 로드된 상태에서 에이전트가 프롬프트/컨텍스트 기반으로 어떤 스킬을 사용할지 결정.
+3. **한 세션 복수 스킬**: 에이전트는 한 세션에서 여러 스킬을 자유롭게 사용 가능.
+4. **스케줄 태스크**: `task-scheduler.ts`에서 due task의 `prompt` 필드를 컨테이너에 전달 → 에이전트가 프롬프트를 보고 적절한 스킬 사용.
+
+따라서 `para-pipeline`과 `para-brain` 2개 스킬이 같은 그룹에 로드되어도, 에이전트가 메시지 유형에 따라 자연스럽게 올바른 스킬을 선택함. 스킬 간 명시적 호출 메커니즘은 불필요 — vault 파일이 인터페이스.
+
+**제약 및 대응**: `container/skills/`의 모든 스킬은 모든 그룹에 로드됨. para-* 2개가 second-brain 외 그룹에도 로드되어 두 가지 문제 발생:
+
+1. **오발동 위험**: 다른 그룹에서 URL을 보내면 para-pipeline이 트리거될 수 있음
+2. **불필요한 컨텍스트 증가**: 에이전트의 스킬 목록이 길어짐
+
+**대응 방안**: 스킬 description에 vault 경로 존재 여부 확인 가드를 포함. para-pipeline/para-brain 모두 `$VAULT` 경로가 마운트되지 않은 그룹에서는 스킬 사용을 건너뜀. 예: "Only use this skill when the vault path ($VAULT or /workspace/extra/vault) exists."
 
 ---
 
@@ -441,10 +510,16 @@ QMD persistent HTTP 서버
   → Claude Code, 다른 에이전트도 접근 가능
 ```
 
-QMD 도입 시점 판단 기준:
-- vault 노트 수 300개 초과
-- Express(능동적 추천) 구현 시작
+QMD 도입 시점 판단 기준 (**어느 하나라도 해당되면 도입 검토**):
+- vault 노트 수 300개 초과 → grep 성능/정확도 한계
+- Phase 1d Express Push 구현 시작 → grep만으로 연관 분석 품질 부족
 - 사용자가 검색 품질에 불만 표시
+
+**Express와 QMD의 관계**: Phase 1b Express Pull은 grep으로 시작. grep 기반 검색 품질이 충분하면 QMD 없이도 Express Pull 운영 가능. Phase 1d Express Push는 vault 전체 연관 분석이 필요하므로 QMD 전제로 설계. 즉, Express Pull → grep OK, Express Push → QMD 필요.
+
+**참고 프로젝트 검색 비교** (§2 외 추가):
+- `references/memsearch`: BM25+벡터 하이브리드. QMD와 동일 방향이지만 Python 기반이고 MCP 서버 모드 미지원. QMD가 NanoClaw(Node.js) 스택과 더 호환되므로 QMD 선택.
+- `references/PageIndex`: 벡터 없이 추론 기반 검색 (Vectorless RAG). 임베딩 인프라 없이 LLM 추론만으로 검색하는 대안적 접근. vault 300개 이하에서는 grep으로 충분하고, 300개 초과 시 QMD의 hybrid 검색이 정확도/성능 균형이 나으므로 현 단계에서는 미채택. Phase 2+ 고급 검색에서 재검토 가능.
 
 ### Phase 2+: 고급 검색
 
@@ -463,6 +538,17 @@ QMD 도입 시점 판단 기준:
 | 주간 리뷰 (일요일 09:00) | inbox 미분류 목록 + 분류 추천 + 이번 주 캡처 수 |
 | 연결 발견 (매일 or 캡처 5개마다) | 최근 캡처 ↔ 기존 노트 연관성 분석 → "이런 연결을 발견했어요" |
 | inbox 임계값 (inbox > 10) | "inbox에 미분류 노트가 {N}개 쌓였어요" |
+
+**Express Push 알고리즘 방향 (Phase 1d 시점에 구체화):**
+
+QMD의 `query` MCP 도구를 활용한 연관 분석 스케치:
+1. 최근 7일 캡처 노트의 `tags` + `ai_summary`를 수집
+2. 각 캡처에 대해 `mcp__qmd__query(type: "vec", query: ai_summary)` 실행 → 시맨틱 유사 기존 노트 검색
+3. QMD의 BM25 probe strong signal 패턴 활용 (topScore ≥ 0.85 AND gap ≥ 0.15이면 확신도 높은 연결)
+4. 연결 threshold: RRF blended score 상위 3개만 추천 (노이즈 방지)
+5. 이미 `related:` 에 있는 연결은 제외 (중복 추천 방지)
+
+이 방향은 QMD 코드(`store.ts:3585-3598`)의 strong signal 감지 패턴에 기반하며, 구체적 threshold와 결과 포맷은 Phase 1d 설계 시 확정.
 
 ### 6.2 Pull 강화 (질문 시)
 
@@ -508,8 +594,9 @@ QMD를 MCP 서버로 운영하면:
 ```markdown
 ---
 title: "Aggregate Design in DDD"
-distill_layer: 4
-ai_executive_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터..."
+ai_distill_depth: 4
+distill_layer: 0
+ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, DDD에서 일관성 경계와 동시성 제어의 핵심 단위. 작게 잡을수록 동시성 충돌이 줄어든다는 실증 데이터 기반 설계 원칙을 제시."
 ---
 
 > **Executive Summary**: Aggregate는 트랜잭션 경계를 정의하는 클러스터...
@@ -524,14 +611,14 @@ ai_executive_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러�
 - 작은 Aggregate가 **동시성 충돌을 줄인다**는 실증 데이터...
 ```
 
-볼드(`**`)가 Layer 2, 상단 Executive Summary가 Layer 4.
+볼드(`**`)가 Layer 2, `==하이라이트==`가 Layer 3, 상단 Executive Summary가 Layer 4. `ai_distill_depth: 4`는 AI가 4단계까지 생성했음을 표시하고, `distill_layer: 0`은 사용자가 아직 확인하지 않았음을 의미.
 
 **Layer 3 마커 선택지:**
 - `==highlight==`: Obsidian에서만 렌더링됨. GitHub, iOS 앱에서는 무시됨
 - `<mark>highlight</mark>`: GitHub에서 렌더링되지만 Obsidian에서는 플러그인 필요
 - frontmatter `highlights: []` 배열: 렌더링 무관하게 데이터로 보존
 
-**결정**: Phase 1a에서는 `==highlight==` 사용 (Obsidian이 주 소비자). Phase 1b(iOS 앱) 시점에 재검토. AI가 마킹하므로 나중에 포맷 일괄 변환 가능.
+**결정**: Phase 1a에서는 `==highlight==` 사용. 주 소비자는 에이전트(grep/읽기에 마커 포맷 무관)와 Obsidian(렌더링 지원)이며, 에이전트는 어떤 포맷이든 파싱 가능하므로 사람이 직접 읽을 때의 렌더링 품질로 결정. Phase 1b(iOS 앱) 시점에 재검토. AI가 마킹하므로 나중에 포맷 일괄 변환 가능.
 
 ### 7.2 Reweave (역연결)
 
@@ -560,19 +647,49 @@ source_type: web           # web | memo | youtube | twitter | ...
 captured: 2026-03-22T14:30:00+09:00
 processed: 2026-03-22T14:30:05+09:00
 status: pending_review     # raw | pending_review | classified | auto_classified
-distill_layer: 4           # 1 | 2 | 3 | 4 (Progressive Summarization 단계)
+ai_distill_depth: 4        # AI가 생성한 최고 레이어 (캡처 시 항상 4)
+distill_layer: 0           # 사용자가 확인/승인한 최고 레이어 (0=미확인, 1~4)
 contexts:
   - resources/ddd
   - projects/linkdive
 tags: [ddd, aggregate, architecture]
-ai_executive_summary: "한 줄 요약..."
-ai_summary: "2-3 문장 요약"
+ai_summary: "2-3 문장 요약 + 한 줄 핵심 (Executive Summary 겸용)"
 ai_suggested_category: "resources/ddd"
 related:                   # Reweave로 추가된 역연결
   - path: "resources/ddd/bounded-context.md"
     reason: "동일 도메인"
 ---
 ```
+
+**distill_layer 설계 결정**:
+- `ai_distill_depth`: AI가 캡처 시 생성한 최고 레이어. 현재는 항상 4 (Layer 1~4 일괄 생성). **존재 이유**: 향후 부분 Distill 지원 시 필요 — 예: 크롤링 실패로 본문이 짧아 Layer 2까지만 생성한 경우, 메모 캡처(source_type: memo)에서 Layer 축소 적용 시, 또는 LLM 비용 절감을 위해 캡처 시 Layer 2까지만 자동 생성하고 Layer 3~4는 수동 트리거로 전환하는 정책 변경 시. 이 시나리오가 발생하기 전까지는 항상 4이며, 필터/정렬 기준으로 사용하지 않음.
+- `distill_layer`: **사용자가 확인/승인한 최고 레이어**. 캡처 직후 0 (미확인). 사용자가 노트를 열어보고 분류하면 1~2, 수동 재정제하면 3~4. 이 필드가 필터/정렬 기준이 됨 (예: "아직 안 본 노트" = `distill_layer: 0`).
+
+**ai_summary 통합**: 기존 schema의 `ai_summary` 하나로 통합. Executive Summary(한 줄)와 상세 요약(2-3문장)을 별도 필드로 나누지 않음 — 본문 상단의 `> **Executive Summary**: ...` 블록이 한 줄 핵심을 담당하고, frontmatter `ai_summary`는 2-3문장 요약.
+
+### 7.4 _settings.yaml 스키마
+
+```yaml
+# $VAULT/_settings.yaml
+auto_classify:
+  enabled: false          # 기본 꺼짐. 캡처는 항상 inbox + 추천만
+  trigger: on_capture     # on_capture | scheduled | manual_only
+  schedule: "sunday 09:00" # trigger: scheduled일 때만 사용
+```
+
+**분류 분리 원칙 (2026-03-24 결정):**
+
+기존 구현은 `auto_classify: boolean`으로 캡처 파이프라인 step 10에서 분류를 실행했음. 이는 BASB CODE 원칙("Capture와 Organize는 인지적 목적이 다르므로 분리")에 위배.
+
+변경:
+- **캡처(para-pipeline)**: 항상 inbox 저장 + 추천 메시지만 전송. `auto_classify` 설정을 읽지 않음
+- **분류(para-brain)**: 독립 워크플로우. 수동 분류가 기본. 자동분류는 `auto_classify.enabled: true`로 별도 활성화
+- **자동분류 트리거**: 캡처에 결합되지 않고, `trigger` 설정에 따라 독립 실행
+  - `manual_only`: "자동분류 실행해" 명령 시에만
+  - `on_capture`: 캡처 완료 후 **별도 단계로** (para-brain이 처리)
+  - `scheduled`: 설정된 시간에 inbox 일괄 처리
+
+**하위 호환**: 기존 `auto_classify: true/false` (boolean) 형식은 `auto_classify.enabled: true/false, trigger: on_capture`로 해석.
 
 ---
 
@@ -596,35 +713,72 @@ related:                   # Reweave로 추가된 역연결
 
 ## 9. 마이그레이션 전략
 
-현재 `second-brain` 스킬(340줄, eval 96%)에서 각 접근으로의 전환:
+현재 `second-brain` 스킬(340줄, 96% pass rate)에서 접근 C로의 전환:
 
-| | A: 단일 스킬 | B: CODE 4분할 | C: 2분할 |
-|--|-------------|-------------|---------|
-| **변경 범위** | 기존 SKILL.md 확장 | 기존 SKILL.md 삭제 → 4개 신규 | 기존 SKILL.md 삭제 → 2개 신규 |
-| **기존 eval 생존** | 대부분 유지 (Capture/Organize eval) | 스킬별 새 eval 필요 | 파이프라인용 eval 재작성 |
-| **전환 방식** | 점진적 (기능 추가) | 한 번에 (atomic swap) | 한 번에 (atomic swap) |
-| **그룹 CLAUDE.md** | 변경 없음 | 스킬 참조 업데이트 | 스킬 참조 업데이트 |
-| **vault 호환** | 100% (기존 노트 그대로) | 100% (frontmatter 확장은 하위 호환) | 100% |
+### 9.1 전환 계획
+
+| 항목 | 내용 |
+|------|------|
+| **변경 범위** | `container/skills/second-brain/` 삭제 → `para-pipeline/` + `para-brain/` 2개 신규 |
+| **기존 테스트** | Capture 테스트(8개) → para-pipeline으로 이관. Organize 테스트(3개) → para-brain으로 이관. 크롤 진단(1개) → para-pipeline. 상세 매핑은 §10.1 참조 |
+| **전환 방식** | Atomic swap (기존 삭제 + 신규 생성 동시) |
+| **그룹 CLAUDE.md** | 스킬 참조 업데이트 (second-brain → para-pipeline, para-brain) |
+| **vault 호환** | 100%. 기존 노트 그대로 유지. 새 frontmatter 필드(`ai_distill_depth`, `distill_layer`)는 기존 노트에 없어도 무방 (기본값 처리) |
+
+### 9.2 기존 노트 하위 호환
+
+- `ai_distill_depth` 없는 기존 노트: AI가 Distill을 수행하지 않았다고 간주
+- `distill_layer` 없는 기존 노트: 0 (미확인)으로 간주
+- 기존 `ai_summary` 필드: 그대로 유지 (포맷 호환)
+- 일괄 마이그레이션 불필요 — 새 캡처부터 새 스키마 적용, 기존 노트는 접근 시 점진적으로 업데이트
 
 ## 10. Eval 전략
 
-| CODE 단계 | 성공 기준 | 측정 방법 |
-|-----------|----------|----------|
-| Capture | URL → inbox/ 파일 생성 + 올바른 frontmatter | 기존 eval 활용 |
-| Organize | 분류 추천 정확도, 사용자 승인률 | A/B: 추천 vs 실제 분류 일치율 |
-| Distill | Layer 4 요약이 원문 핵심을 반영하는가 | 요약 vs 원문 키워드 겹침률 |
-| Express | vault 검색 시 관련 노트 적중률 | 질문 → 반환 노트의 관련성 (수동 평가) |
-| Reweave | 역연결의 관련성 | related: 추가된 노트 쌍의 실제 관련도 |
+### 10.1 기존 eval → 새 스킬 매핑
+
+현재 `second-brain` eval 12개 → `para-pipeline` / `para-brain` 이관:
+
+| 기존 Eval | 내용 | 이관 대상 | 변경 |
+|-----------|------|----------|------|
+| 1. URL 캡처 (DDD 기사) | URL → inbox/ 파일 생성 | para-pipeline | frontmatter에 `ai_distill_depth`, `distill_layer: 0` 추가 검증 |
+| 2. 중복 감지 | 동일 URL 재캡처 거부 | para-pipeline | 그대로 |
+| 3. 아카이브 거부 | 아카이브 노트 수정 불가 | para-brain | 그대로 |
+| 4. 텍스트 메모 캡처 | 메모 → inbox/ 저장 | para-pipeline | 그대로 |
+| 5-6. 분류 (수동+자동) | PARA 분류 | para-brain | 그대로 |
+| 7. 주간 리뷰 | inbox 정리 + 분류 추천 | para-brain | 그대로 |
+| 8-9. 플랫폼 크롤링 (Twitter, Threads) | 플랫폼별 전략 | para-pipeline | 그대로 |
+| 10-11. YouTube 크롤링 | 메타데이터 + yt-dlp | para-pipeline | 그대로 |
+| 12. 크롤 진단 | 로그 읽기/디버깅 | para-pipeline | 그대로 |
+
+### 10.2 새 eval (Phase별 추가)
+
+| CODE 단계 | Phase | 성공 기준 | 측정 방법 |
+|-----------|-------|----------|----------|
+| Capture + Distill | 1a | URL → inbox/ 파일 + Layer 2(볼드), Layer 4(Executive Summary) 포함 | para-pipeline eval |
+| Organize + Reweave | 1a | 분류 추천 정확도 + related 역연결 관련성 | para-brain eval |
+| Express Pull | 1b | vault 검색 시 관련 노트 적중률 + match 설명 품질 | 질문 → 반환 노트의 관련성 (수동 평가) |
+| Express Push | 1d | 능동 추천의 연관성 + 사용자 반응 | 추천 → 사용자 열람/활용률 |
+
+**Reweave eval 시나리오 (Phase 1a):**
+
+1. **분류 시 역연결 추가**: 기존 vault에 `resources/ddd/bounded-context.md`가 있을 때, 새 노트를 `resources/ddd/`로 분류하면 기존 노트의 frontmatter에 `related:` 엔트리가 추가되는지 검증. 성공 기준: (a) 관련 기존 노트 1개 이상 발견, (b) `related.path`가 새 노트의 실제 경로와 일치, (c) `related.reason`이 의미 있는 연결 사유.
+2. **write-path 예외 준수**: `classified` 노트에 `related:` 추가 시 본문과 다른 frontmatter 필드가 변경되지 않는지 검증. 성공 기준: diff가 `related:` 블록 추가만 포함.
 
 ## 11. 미결정 사항
 
-- [ ] 접근 방식 선택 (A / B / C)
-- [ ] QMD 통합 시점 (Phase 1a에 당길지, Phase 1d 유지할지)
-- [ ] Express 능동 추천의 구체적 스케줄/트리거
-- [ ] Distill 수동 트리거의 UX (메시지 명령? 스케줄?)
-- [ ] Claude Code vault 접근 방식 (MCP? 직접 읽기?)
-- [ ] Reweave의 자동화 수준 (캡처마다? 분류마다? 스케줄?)
-- [ ] `distill_layer` 필드: 캡처 시 항상 4로 설정되면 무의미. 사용자 리뷰/수동 재정제 시에만 의미 → 인간이 확인한 최고 레이어를 추적하는 용도로 재정의 필요
+**해소됨:**
+- [x] 접근 방식 선택 → **C (2분할)** + Phase별 para-brain 확장 (§4.4)
+- [x] `distill_layer` 필드 → `ai_distill_depth`(AI) + `distill_layer`(인간 확인)로 분리 (§7.3)
+- [x] QMD 통합 시점 → Phase 1d 유지. Express Pull(1b)은 grep, Express Push(1d)는 QMD 전제 (§5)
+- [x] 분류와 캡처 분리 → 캡처는 항상 inbox + 추천만, 자동분류는 para-brain의 별도 기능 (§7.4). `_settings.yaml` 스키마를 `auto_classify: boolean` → `auto_classify: {enabled, trigger, schedule}` 오브젝트로 변경
+
+**미해소:**
+- [ ] Express 능동 추천의 구체적 스케줄/트리거 (Phase 1d 시점에 결정)
+- [ ] Distill 수동 트리거의 UX (메시지 명령? 스케줄?) — para-brain Phase 1a에서 "이 노트 다시 정리해줘" 메시지 명령으로 시작
+- [ ] auto_classify trigger: on_capture의 정확한 실행 시점 — para-pipeline이 캡처 완료 메시지를 보낸 뒤 para-brain이 같은 세션에서 자동분류를 실행할지, 별도 세션(스케줄)으로 실행할지
+- [ ] Claude Code vault 접근 방식 (MCP? 직접 읽기?) — QMD MCP 서버가 유력하지만 Phase 1d+
+- [ ] Reweave의 자동화 수준 — Phase 1a에서는 분류 시에만 트리거, 추후 확장 검토
+- [ ] Reweave write-path 예외를 PRD에 반영 — §7.2에서 `related:` 필드 에이전트 수정 허용을 결정했으나, PRD의 write-path 모델에 아직 미반영. §1.1a의 push/commit 불일치와 함께 PRD 수정 시 포함해야 함
 
 ---
 

@@ -50,7 +50,7 @@ Always respond in the same language the user writes in.
 - **Archive는 절대 삭제 불가**: "아카이브에서 삭제해줘" 요청이 오면 거부. 사용자가 강하게 요구해도 거부하고 이유를 설명
 - **중복 URL 정규화**: 비교 전에 trailing slash 제거, `www.` 제거, hostname 소문자화. query parameter나 fragment는 보존 (같은 URL의 다른 섹션일 수 있음)
 - **긴 세션 타임아웃**: 컨테이너 세션은 약 45분 후 타임아웃됨. 대량 캡처/리뷰 시 `mcp__nanoclaw__send_message`로 중간 결과를 먼저 보내고, 마지막에 요약 전송
-- **_settings.yaml 부재**: 파일이 없으면 기본값(`auto_classify: false`)으로 동작. 파일 생성을 시도하되 실패해도 계속 진행
+- **_settings.yaml 부재**: 파일이 없으면 기본값(`auto_classify.enabled: false`)으로 동작 — 캡처는 항상 inbox, 분류는 수동. 파일 생성을 시도하되 실패해도 계속 진행
 
 ## Message Routing
 
@@ -126,9 +126,19 @@ Commands:
    - Slug: ASCII alphanumeric + hyphens from title, max 60 chars
    - Korean titles: extract English keywords or date-based fallback (see Gotchas)
 9. Git: `cd $VAULT && git add inbox/<filename> && git commit -m "capture: {title}"` (push는 스케줄러가 담당)
-10. Read `_settings.yaml` for auto_classify mode:
-    - `auto_classify: false` → Reply with classification recommendation
-    - `auto_classify: true` → Auto-classify immediately
+10. 분류 추천 포함 결과 메시지 전송 (파일은 항상 inbox에 유지):
+
+> *캡처 완료: {title}*
+>
+> *핵심*: {핵심 주장 1-2줄 요약}
+> *인사이트*: {가장 주목할 만한 포인트 1줄}
+> *시사점*: {실용적 행동 지침 1줄}
+>
+> 배치: `{ai_suggested_category}` ({기존|신규}) — {reason}
+> 연결: `{related context 1}`, `{related context 2}`
+> (답장으로 분류하거나 나중에 일괄 분류)
+
+캡처 파이프라인은 여기서 종료. **분류(이동)는 별도 워크플로우** — Classification 섹션 참조.
 
 ### Crawl Diagnostics
 
@@ -226,45 +236,74 @@ grep '"next":"browser"' $VAULT/_logs/crawl.jsonl
 
 **captured_via**: Set based on environment — NanoClaw container: check channel from CLAUDE.md (telegram, whatsapp, etc.). Claude Code local: `claude-code`. This field records which *channel* initiated the capture (not the URL's source platform — that's `source_type`).
 
-### Classification
+### Classification (독립 워크플로우)
 
-**Manual Mode (auto_classify: false — default):**
-After capture, recommend a PARA category using the decision tree in [references/para.md](references/para.md).
+분류는 캡처와 분리된 독립 워크플로우. 캡처는 항상 inbox에 저장하고 추천만 전송. 실제 분류(파일 이동)는 아래 트리거로만 실행.
 
-Before recommending, check which PARA subfolders already exist in the vault (`ls $VAULT/projects/ $VAULT/areas/ $VAULT/resources/`). Label each option as **(기존)** or **(신규)**.
+**트리거:**
+- 캡처 추천 메시지에 답장 (승인/변경)
+- "분류해줘" / "미분류 정리해줘" → inbox 전체 배치 분류
+- "이 노트를 {target}으로 옮겨줘" → 단건 직접 분류
+- 주간 리뷰 (Weekly Review 참조)
+- 자동분류 (설정 시 — Auto-Classification 참조)
 
-Reply format:
-> *캡처 완료: {title}*
->
-> *핵심*: {핵심 주장 1-2줄 요약}
-> *인사이트*: {가장 주목할 만한 포인트 1줄}
-> *시사점*: {실용적 행동 지침 1줄}
->
-> 배치: `resources/{topic}` (기존) — {reason}
-> 연결: `projects/{name}` (기존), `areas/{name}` (신규)
-> (답장으로 선택하거나 직접 지정해주세요)
+**분류 실행 흐름:**
 
-**M:N contexts**: 물리적 배치(파일이 이동할 곳) 1개 + 논리적 연결(contexts에 추가될 관련 경로) N개를 함께 추천. 예: 파일은 `resources/ddd`에 배치하되, `projects/app-redesign`과 `areas/backend` contexts도 추가.
+1. 대상 노트의 `ai_suggested_category`, `tags`, `contexts` 분석
+2. PARA 의사결정 트리 적용 ([references/para.md](references/para.md))
+3. 기존 PARA 폴더 확인 (`ls $VAULT/projects/ $VAULT/areas/ $VAULT/resources/`) → **(기존)** / **(신규)** 라벨링
+4. **M:N contexts**: 물리적 배치(파일이 이동할 곳) 1개 + 논리적 연결(contexts에 추가될 관련 경로) N개를 함께 추천. 예: 파일은 `resources/ddd`에 배치하되, `projects/app-redesign`과 `areas/backend` contexts도 추가
+5. 사용자 응답 처리:
+   - 승인 → `git mv inbox/{file} {target}/{file}`, frontmatter: `status: classified`, `contexts: [target, ...related]`
+   - 다른 위치 지정 → 해당 위치로 이동, contexts 조정
+   - 무응답 → inbox에 `status: pending_review`로 유지
 
-On user response:
-- Approval → `git mv inbox/{file} {target}/{file}`, update frontmatter: `status: classified`, set `contexts` to `[target, ...related]`
-- Different location → move there instead, adjust contexts accordingly
-- No response → keep in inbox as `status: pending_review`
+**배치 분류 ("분류해줘"):**
 
-**Auto Mode (auto_classify: true):**
-- Classify immediately using decision tree
-- **High confidence** (기존 하위 폴더에 명확히 매칭, 태그 2개 이상 겹침): move + set `status: auto_classified`
-- **Low confidence** (새 하위 폴더 필요, 여러 카테고리에 걸침, 태그 겹침 없음): keep in inbox as `pending_review`, reply with recommendation
-- Reply (high): "*캡처+분류 완료: {title}* → `{target}`\n*핵심*: {1-2줄} | *인사이트*: {1줄} | *시사점*: {1줄}"
-- Reply (low): same as manual mode reply format
+1. `ls $VAULT/inbox/` → `pending_review` 노트 목록
+2. 각 노트에 대해 분류 추천 생성
+3. 요약 메시지 전송:
+   > *미분류 노트 {N}개:*
+   > • {title} → `{suggested}` ({기존|신규}) — {reason}
+   > • ...
+   > (번호로 승인하거나 "전체 승인", "N번 → {다른위치}" 형식으로 변경)
+4. 사용자 응답에 따라 일괄 이동
 
-**Direct commands:**
+**직접 명령:**
 - "이 노트를 {target}으로 옮겨줘" → move + update frontmatter
 - "미분류 노트 보여줘" → list inbox/ notes with status raw/pending_review
 
-**Mode toggle:**
-- "자동 분류 켜줘" → update `_settings.yaml`: `auto_classify: true`, confirm
-- "자동 분류 꺼줘" → update `_settings.yaml`: `auto_classify: false`, confirm
+### Auto-Classification (별도 기능)
+
+자동분류는 캡처와 독립적인 별도 기능. `_settings.yaml`로 설정.
+
+```yaml
+# _settings.yaml
+auto_classify:
+  enabled: false          # 기본 꺼짐
+  trigger: on_capture     # on_capture | scheduled | manual_only
+  schedule: "sunday 09:00" # trigger: scheduled일 때만
+```
+
+| trigger | 동작 |
+|---------|------|
+| `manual_only` | "자동분류 실행해" 명령 시에만 배치 실행 |
+| `on_capture` | 캡처 완료 후 별도 단계로 자동분류 시도 (높은 확신도만) |
+| `scheduled` | 설정된 시간에 inbox 일괄 자동분류 |
+
+**확신도 판단:**
+- **High** (기존 하위 폴더에 명확히 매칭 + 태그 2개 이상 겹침): 자동 이동 + `status: auto_classified`
+- **Low** (새 하위 폴더 필요, 여러 카테고리에 걸침, 태그 겹침 없음): inbox 유지 + `pending_review`, 추천만 전송
+
+**자동분류 후 메시지:**
+- High: "*자동분류: {title}* → `{target}` | *핵심*: {1-2줄}"
+- Low: 수동 분류와 동일한 추천 형식
+
+**설정 명령:**
+- "자동 분류 켜줘" → `auto_classify.enabled: true`, trigger 확인 후 설정
+- "자동 분류 꺼줘" → `auto_classify.enabled: false`
+- "캡처할 때 자동분류해줘" → `trigger: on_capture`
+- "매주 일요일에 자동분류해줘" → `trigger: scheduled`, `schedule: "sunday 09:00"`
 
 ### Vault Search/Query
 
@@ -282,29 +321,21 @@ Search strategies:
 
 ### Weekly Review
 
-Read `_settings.yaml` to determine mode.
+주간 리뷰는 inbox 현황 보고 + 분류 추천. 자동분류가 켜져 있어도 주간 리뷰 자체는 항상 추천만 전송.
 
-**Manual mode (auto_classify: false):**
 1. List inbox/ notes with status: raw or pending_review
 2. For each, generate a classification recommendation (do NOT move)
 3. Send summary:
    > *주간 리뷰*
    > 미분류 노트 {N}개:
-   > • {title} → 추천: `{category}`
+   > • {title} → 추천: `{category}` ({기존|신규})
    > • ...
    > 이번 주 캡처: {total}개
-4. Wait for user to classify via replies
+   > ("전체 승인" 또는 번호로 개별 분류)
+4. Wait for user to classify via replies (Classification 워크플로우 실행)
 
-**Auto mode (auto_classify: true):**
-1. List inbox/ notes with status: raw or pending_review
-2. Auto-classify each (move + status: auto_classified). Low confidence → keep in inbox
-3. Send summary:
-   > *주간 리뷰*
-   > 자동 분류: {N}개
-   > • {title} → `{category}`
-   > 리뷰 필요: {M}개
-   > • {title} (확신도 낮음)
-   > 이번 주 캡처: {total}개
+자동분류(`auto_classify.enabled: true`)가 켜져 있으면 주간 리뷰 후 추가 안내:
+> *자동분류 대상 {M}개 (높은 확신도) — "자동분류 실행해"로 일괄 처리 가능*
 
 ### Session Clear
 

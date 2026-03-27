@@ -18,7 +18,30 @@
       "Bash(ls /Users/ljo/Desktop/project/linkDive/nanoclaw/*.db)",
       "Bash(ls /Users/ljo/Desktop/project/linkDive/nanoclaw/data/*.db)",
       "Bash(sqlite3 /Users/ljo/Desktop/project/linkDive/nanoclaw/nanoclaw.db .schema)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(docker run:*)"
+    ]
+  },
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ljo/.claude/plugins/marketplaces/claude-code-zero/plugins/worktree-plus/hooks/scripts/worktree-create.sh"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/ljo/.claude/plugins/marketplaces/claude-code-zero/plugins/worktree-plus/hooks/scripts/worktree-remove.sh"
+          }
+        ]
+      }
     ]
   }
 }
