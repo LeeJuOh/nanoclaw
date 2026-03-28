@@ -65,8 +65,6 @@ Before creating a PR, adding a skill, or preparing any contribution, you MUST re
 | [obsidian-skills](references/obsidian-skills) | — | Obsidian 에이전트 스킬 — 스킬 스펙, 구조화된 에이전트 스킬 참고 |
 | [symphony](references/symphony) | — | 자율 코딩 에이전트 오케스트레이터 — Linear 연동, 에이전트 스웜 관리 참고 |
 
-전체 31개 프로젝트 목록과 채택/미채택 근거: [references-analysis.md](docs/superpowers/specs/2026-03-28-references-analysis.md)
-
 ## Development
 
 Run commands directly—don't tell the user to run them.
