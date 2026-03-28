@@ -1,8 +1,8 @@
 # Second Brain CODE Redesign — Design Spec
 
 > **Date**: 2026-03-22
-> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), Express 3분할+훅 구조·검수 반영 (2026-03-27), 2차 검수 반영 (2026-03-27)
-> **Context**: PRD 검수 + 참조 프로젝트 8개 코드 분석 + NotebookLM(BASB 원전) 검증
+> **Status**: Draft — 접근 C 선택, 분류 분리 결정 (2026-03-24), Express 3분할+훅 구조·검수 반영 (2026-03-27), 2차 검수 반영 (2026-03-27), 3차 검수: 31개 references 심층 분석 + 6건 채택 반영 (2026-03-28)
+> **Context**: PRD 검수 + 참조 프로젝트 31개 코드 분석 + NotebookLM(BASB 원전) 검증
 
 ---
 
@@ -431,6 +431,12 @@ Express Pull — 명시적 vault 검색 (Phase 1b+)
 
 프로젝트 지원
   → "프로젝트 X 시작" → 관련 Intermediate Packets 조립
+
+대화 fact 추출 (Phase 1b, memory-bank 패턴 채택)
+  → 세션 종료 시 에이전트가 대화에서 fact 추출
+  → 카테고리: decision, preference, pattern, knowledge, constraint
+  → inbox에 source_type: conversation 노트로 저장
+  → 세션당 최대 20개, 신뢰도 0.7 미만은 폐기
 ```
 
 **SessionStart 훅 (`vault-context.sh`):**
@@ -441,17 +447,28 @@ Express Pull — 명시적 vault 검색 (Phase 1b+)
 # SessionStart 훅으로 등록 — 매 세션 시작 시 실행
 VAULT="${VAULT:-/workspace/extra/vault}"
 if [ -d "$VAULT" ]; then
-  cat <<'CONTEXT'
+  # vault 통계 수집 — 에이전트의 검색 판단 품질 향상 (arscontexta SessionStart 패턴)
+  TOTAL=$(find "$VAULT" -name '*.md' ! -name '_*' | wc -l | tr -d ' ')
+  INBOX=$(find "$VAULT/inbox" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  PARA_DIRS=$(find "$VAULT" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -name inbox | head -20 | sed "s|$VAULT/||" | tr '\n' ', ')
+  RECENT_TAGS=$(grep -rh '^tags:' "$VAULT/inbox/" 2>/dev/null | sed 's/tags: *\[//;s/\]//;s/, /\n/g' | sort | uniq -c | sort -rn | head -10 | awk '{print $2}' | tr '\n' ', ')
+
+  cat <<CONTEXT
 [Vault Awareness] 이 그룹에 지식 저장소(vault)가 있습니다.
 경로: $VAULT
-질문에 답할 때 `grep -ril "키워드" $VAULT/`로 관련 노트를 먼저 찾아보세요.
+노트 수: ${TOTAL}개 (inbox: ${INBOX}개)
+PARA 경로: ${PARA_DIRS%,}
+최근 빈출 태그: ${RECENT_TAGS%,}
+질문에 답할 때 \`grep -ril "키워드" $VAULT/\`로 관련 노트를 먼저 찾아보세요.
 관련 노트가 있으면 인용해서 답변하고, 없으면 일반 지식으로 답변하세요.
 vault 결과와 일반 지식을 명확히 구분해서 제시하세요.
 CONTEXT
 fi
 ```
 
-이 훅은 스킬 트리거 없이 모든 대화에서 에이전트가 vault를 자연스럽게 참조하게 만듦. Express의 "ambient" 부분을 담당.
+이 훅은 스킬 트리거 없이 모든 대화에서 에이전트가 vault를 자연스럽게 참조하게 만듦. Express의 "ambient" 부분을 담당. vault 통계(노트 수, PARA 경로, 빈출 태그)를 함께 주입하여 에이전트가 "무엇을 grep할지" 판단하는 품질을 높임.
+
+> **Express Ambient 한계**: 이 훅은 에이전트에게 vault 존재를 알리지만, 실제 grep 실행 여부는 LLM 판단에 의존함. vault 통계 주입으로 판단 품질을 높이되, Phase 1d QMD MCP 통합 전까지는 "권장"이지 "보장"이 아님. Express Pull(명시적 검색 키워드)과 Ambient(암묵적)의 품질 차이를 eval에서 측정하여 Phase별 개선 근거로 사용.
 
 **분류 분리 원칙:** 캡처(para-pipeline)는 절대 파일을 inbox 밖으로 이동하지 않음. 분류(para-brain)만이 파일을 이동할 수 있음. 자동분류도 para-brain의 독립 기능으로, 캡처 파이프라인에 결합되지 않음. BASB: "Capture와 Organize는 인지적 목적이 다르므로 분리가 원칙".
 
@@ -471,7 +488,41 @@ fi
 
 ---
 
-### 4.4 결정: 접근 C + Phase별 para-brain 확장
+### 4.4 제품 전략: A(Obsidian+AI) 먼저, B(범용) 전환 경로 확보
+
+#### 시장 두 개, 제품 두 개
+
+| | A: "Obsidian + AI" | B: "범용 AI 세컨드 브레인" |
+|---|---|---|
+| **타겟** | Obsidian/PKM 유저 (파일 소유권 중시) | 일반 소비자 (검색·UI 중시) |
+| **소스 of truth** | Git markdown vault | PostgreSQL + 클라우드 |
+| **차별점** | CODE 파이프라인 + 메시징 캡처 + PARA | 검색 품질 + 멀티포맷 + 웹 UI |
+| **경쟁 상대** | khoj (검색 도구), Obsidian 플러그인들 | khoj, supermemory, Notion AI |
+
+#### khoj와의 포지셔닝
+
+khoj(33k+ stars)는 **검색 도구**다. 문서를 넣으면 AI가 검색/대화해주는 것. PARA 분류, Progressive Summarization, Reweave, Express Push가 없다. 사용자가 텔레그램에서 URL 보내면 AI가 크롤링→요약→PARA 분류 추천→기존 노트 연결까지 해주는 파이프라인은 khoj에 없다.
+
+- **이길 수 있는 지점**: 캡처→분류→정제→활용 파이프라인, 메시징 앱 제로 프릭션 캡처, BASB CODE 방법론
+- **못 이기는 지점**: 검색 품질, 멀티포맷 수, UI 완성도. 여기서 경쟁하면 진다
+- **전략**: khoj와 경쟁하지 않고 khoj가 안 하는 걸 한다. 검색은 QMD 통합으로 "충분히 좋은" 수준까지
+
+#### 결정: A 먼저, 반응 보고 B 전환
+
+**A로 시작하면 B로 갈 때 버리는 게 없다:**
+
+- vault markdown 노트 → DB로 인덱싱하면 됨 (소스 of truth는 Git 유지 또는 DB로 전환, 선택 가능)
+- PARA 분류 → DB 테이블 태그로 매핑
+- para-pipeline/para-brain 스킬 로직 → API 서버 뒤에 그대로 재사용
+- CODE 파이프라인 → A든 B든 핵심 차별점
+
+**B로 가면서 추가하는 것**: DB 레이어, 웹 UI, 인증. A에서 만든 것은 전부 살린다.
+
+**현재 스펙은 A로 설계되어 있다.** Phase 1a~1d는 모두 A 기준. B 전환은 A에서 시장 반응을 확인한 후 별도 스펙으로 설계.
+
+---
+
+### 4.5 결정: 접근 C + Phase별 para-brain 확장
 
 **접근 C를 선택한다.** 단, para-brain의 범위를 Phase별로 제한.
 
@@ -489,11 +540,11 @@ fi
 
 **Phase별 확장:**
 
-| Phase | para-pipeline | para-brain | SessionStart 훅 | 전환 기준 |
-|-------|--------------|------------|-----------------|----------|
-| **1a (현재)** | Capture + auto Distill (항상 inbox 저장, 추천만) | Organize (수동 분류 + 주간 리뷰 + Reweave) + Auto-Classification (별도 기능) ~150줄 | vault-context.sh (Express Ambient) | — |
-| **1b** | 동일 | + Express Pull (명시적 vault 검색 + match 설명) | 동일 | para-pipeline eval 90%+, para-brain Organize eval 85%+, inbox 운영 2주+ |
-| **1d** | 동일 | + Express Push (QMD 통합 후 능동 추천) | 동일 | vault 300개 도달 or Express Pull 검색 품질 불만 or Express Push 구현 시작 |
+| Phase | para-pipeline | para-brain | SessionStart 훅 | 채택 반영 | 전환 기준 |
+|-------|--------------|------------|-----------------|----------|----------|
+| **1a (현재)** | Capture + auto Distill (inbox 저장, 추천만) + `[[wikilink]]` 생성 + `content_hash` 중복 감지 | Organize (수동 분류 + 주간 리뷰 + Reweave + wikilink) + Auto-Classification ~150줄 | vault-context.sh (Express Ambient + vault 통계) | arscontexta wikilink, memsearch content hash | — |
+| **1b** | + PDF 첨부 캡처 (`source_type: pdf`) | + Express Pull (vault 검색 + match 설명) + 대화 fact 추출 (`source_type: conversation`) | 동일 | khoj 멀티포맷, memory-bank fact 추출 | para-pipeline eval 90%+, para-brain Organize eval 85%+, inbox 운영 2주+ |
+| **1d** | + 이미지 캡처 (`source_type: image`) | + Express Push (QMD 통합 후 능동 추천) + `entities` 필드 기반 스마트 Reweave | 동일 | khoj 멀티포맷, cognee 엔티티 추출 | vault 300개 도달 or Express Pull 검색 품질 불만 |
 
 > **Phase 1c 부재 설명**: Phase 1c는 오픈소스 컨트리뷰션 PR (linkdive_research.md §실행 계획 참조)로, 스킬 아키텍처와 독립적이므로 이 스펙 범위 밖.
 
@@ -509,7 +560,7 @@ fi
 - vault-context.sh: ~15줄 (SessionStart 훅)
 - 합계 ~645줄이지만, 스킬 분리 + 훅으로 에이전트는 한 세션에 필요한 컨텍스트만 소비
 
-### 4.5 NanoClaw 스킬 메커니즘 — 설계 근거
+### 4.6 NanoClaw 스킬 메커니즘 — 설계 근거
 
 접근 C가 NanoClaw 아키텍처에서 작동하는 방식:
 
@@ -663,6 +714,7 @@ QMD를 MCP 서버로 운영하면:
 title: "Aggregate Design in DDD"
 ai_distill_depth: 4
 distill_layer: 0
+content_hash: "a1b2c3..."
 ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, DDD에서 일관성 경계와 동시성 제어의 핵심 단위. 작게 잡을수록 동시성 충돌이 줄어든다는 실증 데이터 기반 설계 원칙을 제시."
 ---
 
@@ -672,11 +724,16 @@ ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, D
 
 - **Aggregate는 일관성 경계다** — 하나의 트랜잭션에서...
 - DDD에서 가장 흔한 실수는 ==Aggregate를 너무 크게 잡는 것==
+- [[Bounded Context]]와 Aggregate 경계는 별개지만 상호 제약한다
 
 ## Key Arguments
 
 - 작은 Aggregate가 **동시성 충돌을 줄인다**는 실증 데이터...
 ```
+
+**`[[wikilink]]` 지원** (arscontexta Zettelkasten 패턴 채택): AI가 캡처/Distill 시 관련 기존 노트를 `[[노트제목]]`으로 본문에 링크. PARA(폴더 분류)와 Zettelkasten(링크 그래프)은 보완적 — PARA는 "어디에 넣을지", wikilink는 "무엇과 연결되는지". Obsidian이 `[[wikilink]]`를 네이티브 지원하므로 호환성도 확보. `related:` frontmatter는 구조적 역연결 추적용으로 유지하고, wikilink는 서술적 연결(맥락이 있는 링크)을 담당.
+
+**`content_hash` 필드** (memsearch/khoj 패턴 채택): 크롤링된 본문의 SHA-256 해시. 중복 감지 순서: (1) URL 일치 → 중복, (2) URL 다르지만 content_hash 일치 → 중복, (3) URL 같지만 content_hash 다름 → 업데이트 캡처 허용.
 
 볼드(`**`)가 Layer 2, `==하이라이트==`가 Layer 3, 상단 Executive Summary가 Layer 4. `ai_distill_depth: 4`는 AI가 4단계까지 생성했음을 표시하고, `distill_layer: 0`은 사용자가 아직 확인하지 않았음을 의미.
 
@@ -687,16 +744,21 @@ ai_summary: "Aggregate는 트랜잭션 경계를 정의하는 클러스터로, D
 
 **결정**: Phase 1a에서는 `==highlight==` 사용. 주 소비자는 에이전트(grep/읽기에 마커 포맷 무관)와 Obsidian(렌더링 지원)이며, 에이전트는 어떤 포맷이든 파싱 가능하므로 사람이 직접 읽을 때의 렌더링 품질로 결정. Phase 1b(iOS 앱) 시점에 재검토. AI가 마킹하므로 나중에 포맷 일괄 변환 가능.
 
+**에이전트 파싱 가이드**: `==`는 markdown 표준이 아니므로 일부 파서에서 무시됨. SKILL.md에 "Layer 3 하이라이트는 `==텍스트==` 포맷으로 마킹되어 있음. 검색/분석 시 `==`를 하이라이트 마커로 인식할 것" 가이드를 명시. QMD 통합 시점에 인덱싱 파서가 `==`를 처리하는지 확인 필요.
+
 ### 7.2 Reweave (역연결)
 
 캡처/분류 시 관련 기존 노트 검색 → **양방향** 역연결 추가.
 
 **양방향 연결**: Reweave는 새 노트 → 기존 노트, 기존 노트 → 새 노트 양쪽에 `related:` 엔트리를 추가. 단방향이면 한쪽에서 탐색 시 연결을 발견할 수 없음. arscontexta의 Reweave도 양방향. 구체적으로: 새 노트 A를 `resources/ddd/`로 분류할 때, (a) 기존 노트 B의 `related:`에 A 추가, (b) 새 노트 A의 `related:`에도 B 추가.
 
-**Phase 1a 품질 기준 (보수적)**: grep 기반에서는 연결 노이즈가 발생하기 쉬우므로 보수적으로 운영:
-- **threshold**: 같은 PARA 경로 + 태그 2개 이상 겹침일 때만 `related:` 추가
-- 같은 PARA 경로만 공유하고 태그 겹침이 1개 이하이면 역연결하지 않음 (예: `resources/ddd/` 안의 모든 노트가 기계적으로 연결되는 것 방지)
+**Phase 1a 품질 기준**: vault 규모가 작은 Phase 1a에서는 연결 누락이 노이즈보다 비용이 크므로 threshold를 낮게 운영:
+- **threshold**: 같은 PARA 경로 + 태그 1개 이상 겹침일 때 `related:` 추가
+- 같은 PARA 경로만 공유하고 태그 겹침이 0개이면 역연결하지 않음 (예: `resources/ddd/` 안의 모든 노트가 기계적으로 연결되는 것 방지)
+- Phase 1d: 엔티티 겹침 조건 추가 (태그 겹침 OR `entities` 필드 겹침). cognee의 LLM 엔티티 추출 패턴 참고
 - Phase 1d(QMD 도입) 이후 시맨틱 유사도 score 기반으로 threshold 전환 가능
+
+**Reweave 시 wikilink 생성**: `related:` frontmatter 추가와 함께, 새 노트 본문에 관련 기존 노트를 `[[기존노트제목]]`으로 링크. 기존 노트 본문은 수정하지 않음 (write-path 규칙). 새 노트 → 기존 노트 방향은 wikilink(본문), 기존 노트 → 새 노트 방향은 `related:` frontmatter로 양방향 연결 달성.
 
 **Write-path 충돌 해소**: PRD의 write-path 모델에서 `classified` 노트는 사용자만 수정 가능. Reweave가 기존 노트를 직접 수정하면 규칙 위반. 따라서 `related:` 추가는 **write-path 예외로 명시**: frontmatter의 `related:` 필드만 에이전트가 추가 가능, 나머지 필드와 본문은 기존 규칙 유지.
 
@@ -717,7 +779,7 @@ related:
 ---
 title: "Note title"
 source: "https://..."
-source_type: web           # web | memo | youtube | twitter | threads | github | reddit | medium
+source_type: web           # web | memo | conversation | youtube | twitter | threads | github | reddit | medium | pdf | image (pdf/image: Phase 1b/1d)
 captured: 2026-03-22T14:30:00+09:00
 processed: 2026-03-22T14:30:05+09:00
 status: pending_review     # raw | pending_review | classified | auto_classified
@@ -727,6 +789,8 @@ contexts:
   - resources/ddd
   - projects/linkdive
 tags: [ddd, aggregate, architecture]
+entities: [DDD, Aggregate, Bounded Context]  # AI가 추출한 핵심 엔티티 (Phase 1d)
+content_hash: "sha256:a1b2c3..."             # 크롤링 본문 SHA-256 (중복 감지용)
 ai_summary: "2-3 문장 요약 + 한 줄 핵심 (Executive Summary 겸용)"
 ai_suggested_category: "resources/ddd"
 related:                   # Reweave로 추가된 역연결
@@ -852,15 +916,15 @@ auto_classify:
 ## 11. 미결정 사항
 
 **해소됨:**
-- [x] 접근 방식 선택 → **C (2분할)** + Phase별 para-brain 확장 (§4.4)
+- [x] 접근 방식 선택 → **C (2분할)** + Phase별 para-brain 확장 (§4.5)
 - [x] `distill_layer` 필드 → `ai_distill_depth`(AI) + `distill_layer`(인간 확인)로 분리 (§7.3)
 - [x] QMD 통합 시점 → Phase 1d 유지. Express Pull(1b)은 grep, Express Push(1d)는 QMD 전제 (§5)
 - [x] 분류와 캡처 분리 → 캡처는 항상 inbox + 추천만, 자동분류는 para-brain의 별도 기능 (§7.4). `_settings.yaml` 스키마를 `auto_classify: boolean` → `auto_classify: {enabled, trigger, schedule}` 오브젝트로 변경
-- [x] SessionStart 훅 등록 방식 → NanoClaw: container-runner에서 settings.json에 훅 엔트리 추가. 독립 플러그인: 설치 시 settings.json에 자동 등록 (§4.5)
+- [x] SessionStart 훅 등록 방식 → NanoClaw: container-runner에서 settings.json에 훅 엔트리 추가. 독립 플러그인: 설치 시 settings.json에 자동 등록 (§4.6)
 - [x] `distill_layer` 갱신 규칙 → 분류 시 0→1, 수동 Distill 시 1→2, Layer 4 재정제 시 2→4. 자동 갱신 금지 (§7.3)
 
 **미해소 — Phase 1a 구현 전 결정 필요:**
-- [ ] auto_classify trigger: on_capture의 정확한 실행 시점 — para-pipeline이 캡처 완료 메시지를 보낸 뒤 para-brain이 같은 세션에서 자동분류를 실행할지, 별도 세션(스케줄)으로 실행할지
+- [x] auto_classify trigger: on_capture의 실행 시점 → **별도 세션**. NanoClaw는 메시지당 세션이므로, 캡처 완료 후 같은 세션에서 분류까지 실행하면 컨텍스트 비대 + 분류 실패 시 캡처 결과까지 영향. para-pipeline이 캡처 완료 메시지를 보내면, 다음 메시지 처리 시(사용자 답장 or 스케줄 태스크) para-brain이 별도 세션에서 자동분류 실행
 - [ ] Reweave write-path 예외를 PRD에 반영 — §7.2에서 `related:` 필드 에이전트 수정 허용을 결정했으나, PRD의 write-path 모델에 아직 미반영. §1.1a의 push/commit 불일치와 함께 PRD 수정 시 포함해야 함
 - [ ] PRD 불일치 수정 — §1.1a에서 발견한 push/commit 불일치(PRD "git push" vs 구현 "commit only, scheduler push")를 PRD에 반영
 
@@ -870,14 +934,20 @@ auto_classify:
 - [ ] Claude Code vault 접근 방식 (MCP? 직접 읽기?) — QMD MCP 서버가 유력하지만 Phase 1d+
 - [ ] Reweave의 자동화 수준 — Phase 1a에서는 분류 시에만 트리거, 추후 확장 검토
 - [ ] 주간 리뷰 스케줄 커스터마이즈 — 현재 "일요일 09:00" 하드코딩. `_settings.yaml`에 설정 가능하게 할지 (Phase 1a에선 하드코딩 OK, 추후 검토)
+- [ ] 멀티테넌트/공유 경로 — 제품화 시 사용자 격리 필요. supermemory의 container tag(경로 기반 격리) 또는 cognee의 ACL(User→Tenant→Dataset) 중 선택. Phase 2+에서 결정
+- [ ] 스킬 자가 개선 — hermes-agent의 closed learning loop. SKILL.md가 사용 피드백으로 자동 개선. Phase 2+ (eval 인프라 후)
+- [ ] 대화 fact consolidation — memory-bank의 중복/모순/진화 통합. fact 100개+ 축적 후 Phase 1d+에서 검토
 
 ---
 
-## 부록: 참조 프로젝트 매핑
+## 부록 A: 참조 프로젝트 매핑
 
 | CODE 단계 | 참조 프로젝트 패턴 | LinkDive 적용 |
 |-----------|-------------------|--------------|
-| Capture | khoj TextToEntries (8포맷), course Crawl4AI (비동기) | 현재 구현 유지 + 플랫폼별 전략 |
-| Organize | arscontexta Reflect+Reweave, PARA 의사결정 트리 | Reweave 추가, 조건 기반 트리거 |
+| Capture | khoj TextToEntries (8포맷), memsearch content hash dedup | 현재 구현 + content_hash 중복 감지 + 멀티포맷 경로(1b: PDF, 1d: 이미지) |
+| Organize | arscontexta Reflect+Reweave+wikilink, cognee 엔티티 추출 | Reweave + `[[wikilink]]`(1a) + entities 필드(1d) |
 | Distill | BASB Progressive Summarization, course QualityScoring | Layer 2-4 자동화, 품질 스코어 선택적 |
 | Express | Smart2Brain hybrid 검색 + match 배지, arscontexta MOC | QMD hybrid 검색, 능동 추천, match 설명 |
+| 횡단 | memory-bank fact 추출, walnut speed-tiered, hermes 자가개선 | 대화 fact 추출(1b), 스킬 자가개선(2+) |
+
+> **전체 참조 분석**: 31개 프로젝트 심층 비교분석과 채택/미채택 근거는 [2026-03-28-references-analysis.md](2026-03-28-references-analysis.md) 참조.
