@@ -1,0 +1,145 @@
+{
+  "skill_name": "para-pipeline",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/ (already set up with PARA structure and the sample notes below).\n\nExisting vault contents:\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (see sample-vault-note-1.md)\n- inbox/20260312-100000-react-server-components-guide.md (see sample-vault-note-2.md)\n- _settings.yaml (see sample-settings.yaml)\n- Existing PARA subfolders: resources/ddd-patterns/, areas/frontend/\n\nUser message: https://martinfowler.com/bliki/ValueObject.html\n\nSimulate the capture pipeline. Create the note file content (frontmatter + deep analysis body with Progressive Summarization) and the classification recommendation message. Do NOT actually run curl — instead use this as the crawled content:\n\n\"A Value Object is a small object that represents a simple entity whose equality is not based on identity. Two Value Objects are equal when they have the same value, not necessarily being the same object. Examples include Money, Date Range, and Address. Value Objects should be immutable. In DDD, Value Objects are often used within Aggregates to model concepts that don't need their own identity. They simplify the model by reducing the number of Entities.\"",
+      "expected_output": "A markdown note with correct frontmatter (including ai_distill_depth: 4, distill_layer: 0, content_hash) plus a structured body with Progressive Summarization (bold, highlights, Executive Summary) and wikilink to the existing DDD Aggregate note.",
+      "files": [
+        "evals/files/sample-vault-note-1.md",
+        "evals/files/sample-vault-note-2.md",
+        "evals/files/sample-settings.yaml"
+      ],
+      "expectations": [
+        "Note frontmatter includes ai_distill_depth: 4 and distill_layer: 0",
+        "Note frontmatter includes content_hash with sha256: prefix",
+        "Note body starts with > **Executive Summary**: line (Layer 4)",
+        "Note body contains **bold** text marking key claims (Layer 2)",
+        "Note body contains ==highlight== text marking the most critical insight (Layer 3)",
+        "볼트 연결 section contains [[wikilink]] referencing the existing DDD Aggregate note",
+        "File name follows YYYYMMDD-HHMMSS-slug.md pattern with ASCII-only slug",
+        "Classification recommendation labels resources/ddd-patterns as (기존)",
+        "Describes writing a crawl log entry to $VAULT/_logs/crawl.jsonl"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (has source: \"https://martinfowler.com/bliki/DDD_Aggregate.html\")\n- inbox/20260312-100000-react-server-components-guide.md\n\nUser message: https://martinfowler.com/bliki/DDD_Aggregate.html\n\nThis URL has already been captured. Demonstrate the duplicate detection behavior.",
+      "expected_output": "Agent detects the duplicate URL and replies with existing note info. Does NOT create a new note.",
+      "files": [
+        "evals/files/sample-vault-note-1.md"
+      ],
+      "expectations": [
+        "Agent detects the URL is already captured by matching the normalized URL",
+        "Reply includes the existing note title and its path",
+        "Agent does NOT create a new note file"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (content_hash: \"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\")\n\nUser message: https://example.com/ddd-aggregate-repost\n\nSimulate: This is a DIFFERENT URL but the crawled content is identical to the existing note (same text about DDD Aggregates). The computed SHA-256 hash of the crawled body matches the existing note's content_hash. Demonstrate content_hash duplicate detection.",
+      "expected_output": "Agent detects the content_hash duplicate despite different URL. Informs user that identical content already exists at existing path.",
+      "files": [
+        "evals/files/sample-vault-note-1.md"
+      ],
+      "expectations": [
+        "Agent computes or simulates content_hash of crawled body",
+        "Agent searches for matching content_hash in existing vault notes",
+        "Agent detects duplicate via content_hash match (not URL match)",
+        "Reply mentions that the URL is different but content is identical",
+        "Reply includes the existing note path",
+        "Agent does NOT create a new note"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md\n- areas/frontend/ (has notes)\n\nUser message: 저장해 — 마이크로서비스에서 Saga 패턴은 분산 트랜잭션의 대안이다. 각 서비스가 로컬 트랜잭션을 실행하고, 실패 시 보상 트랜잭션으로 롤백한다. Choreography(이벤트 기반)와 Orchestration(중앙 조율) 두 가지 방식이 있다.",
+      "expected_output": "Text memo capture with Progressive Summarization layers, no source field, no content_hash.",
+      "files": [
+        "evals/files/sample-vault-note-1.md"
+      ],
+      "expectations": [
+        "Note has source_type: memo and NO source URL field",
+        "Note has NO content_hash field (memos don't have crawled content)",
+        "Note has ai_distill_depth: 4 and distill_layer: 0",
+        "Note body starts with > **Executive Summary**: line",
+        "Note body contains the original text as-is",
+        "Note body has **bold** marking on key claims",
+        "File name follows YYYYMMDD-HHMMSS-slug.md pattern",
+        "Classification recommendation is provided"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/ (has notes)\n- areas/frontend/ (has notes)\n\nUser message: https://x.com/kelseyhightower/status/1234567890\n\nSimulate: curl returns JS shell (847 bytes, <noscript> only). agent-browser returns:\n\n\"The best way to learn Kubernetes is to break it. Deploy something, watch it fail, read the logs, fix it. Repeat. Books and courses give you knowledge. Breaking things gives you understanding.\"\n\nSingle tweet (not a thread). Show complete pipeline with Progressive Summarization.",
+      "expected_output": "Twitter capture with platform detection, crawl logging, Progressive Summarization layers, and content_hash.",
+      "files": [],
+      "expectations": [
+        "Agent detects platform as twitter from x.com URL",
+        "Note frontmatter has source_type: twitter",
+        "Note frontmatter has ai_distill_depth: 4, distill_layer: 0, content_hash",
+        "Note body starts with > **Executive Summary**: line",
+        "Agent describes logging curl attempt (usable: false) and browser attempt (usable: true) to crawl.jsonl",
+        "Crawl log entries include platform: twitter"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/ (has notes)\n\nUser message: https://www.threads.com/@techleader/post/ABC123\n\nSimulate: curl returns empty HTML (login wall). agent-browser gets redirected to Threads home feed (invalid_post). Content could not be retrieved.",
+      "expected_output": "Agent logs both failures and asks user to copy-paste the content as text.",
+      "files": [],
+      "expectations": [
+        "Agent detects platform as threads",
+        "Agent describes logging curl attempt with usable: false, reason mentioning login wall",
+        "Agent describes logging browser attempt with usable: false, reason mentioning redirect",
+        "Browser crawl log has next: manual",
+        "Agent asks user to copy-paste content as text for memo capture",
+        "Agent does NOT create a note file"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- areas/ai-engineering/ (has notes)\n\nUser message: https://www.youtube.com/watch?v=dQw4w9WgXcQ\n\nSimulate: curl returns HTML with og:title: \"Understanding Transformer Architecture\", og:description: \"In this video, we explore the transformer architecture...\", Channel: \"AI Engineering Hub\", Published: 2026-03-15. yt-dlp is NOT available.",
+      "expected_output": "YouTube capture from metadata only, with Progressive Summarization layers.",
+      "files": [],
+      "expectations": [
+        "Agent detects platform as youtube",
+        "Note frontmatter has source_type: youtube, ai_distill_depth: 4, distill_layer: 0",
+        "Note body starts with > **Executive Summary**: line",
+        "Agent notes yt-dlp is unavailable and proceeds without transcript",
+        "Classification recommendation suggests areas/ai-engineering as (기존)"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/ with _logs/ directory.\n\nUser message: 최근에 크롤링 실패한 URL들 보여줘\n\nSimulate: $VAULT/_logs/crawl.jsonl exists with these entries:\n{\"ts\":\"2026-03-20T10:00:00+09:00\",\"url\":\"https://threads.com/@user1/post/XYZ\",\"platform\":\"threads\",\"method\":\"curl\",\"http_status\":200,\"content_length\":423,\"usable\":false,\"reason\":\"login wall, empty content\",\"next\":\"browser\"}\n{\"ts\":\"2026-03-20T10:00:05+09:00\",\"url\":\"https://threads.com/@user1/post/XYZ\",\"platform\":\"threads\",\"method\":\"browser\",\"content_length\":0,\"usable\":false,\"reason\":\"invalid_post redirect to home feed\",\"next\":\"manual\",\"error\":\"사용자에게 텍스트 복붙 안내\"}\n{\"ts\":\"2026-03-21T14:30:00+09:00\",\"url\":\"https://x.com/someone/status/999\",\"platform\":\"twitter\",\"method\":\"browser\",\"content_length\":28500,\"usable\":true,\"note\":\"20260321-143010-kubernetes-insight.md\"}\n{\"ts\":\"2026-03-22T09:00:00+09:00\",\"url\":\"https://medium.com/@author/great-article\",\"platform\":\"medium\",\"method\":\"curl\",\"http_status\":200,\"content_length\":890,\"usable\":false,\"reason\":\"paywall, content truncated\",\"next\":\"browser\"}\n{\"ts\":\"2026-03-22T09:00:08+09:00\",\"url\":\"https://medium.com/@author/great-article\",\"platform\":\"medium\",\"method\":\"browser\",\"content_length\":15200,\"usable\":true,\"note\":\"20260322-090015-great-article.md\"}",
+      "expected_output": "Agent reads crawl.jsonl, filters failures, summarizes patterns by platform.",
+      "files": [],
+      "expectations": [
+        "Agent reads $VAULT/_logs/crawl.jsonl for failed entries",
+        "Identifies failed crawl attempts (Threads, Medium curl)",
+        "Notes Threads 100% failure rate",
+        "Notes Medium curl failed but browser succeeded",
+        "Presents results in readable format",
+        "Does NOT attempt to re-crawl"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "You are the para-pipeline capture agent. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/ (has notes)\n\nUser message: https://www.threads.net/@unclejobs.ai/post/ABC123\n\nSimulate: agent-browser successfully loads the page. Content found:\n- Original post by @unclejobs.ai: \"Claude Code 3.0 업데이트 요약\" (80자, 개요만)\n- Self-reply 1 by @unclejobs.ai: \"먼저 가장 큰 변화는 멀티 에이전트 지원입니다. 각 에이전트가 독립 컨텍스트를 갖고...\" (350자)\n- Self-reply 2 by @unclejobs.ai: \"두 번째로 MCP 서버 자동 탐색 기능이 추가됐어요. 프로젝트 루트에...\" (300자)\n- Self-reply 3 by @unclejobs.ai: \"마지막으로 성능 개선. 토큰 사용량이 40% 줄었고...\" (200자)\n- Comment by @otheruser: \"와 대박\" (10자)\n- Comment by @anotheruser: \"감사합니다\" (15자)\n\nShow complete pipeline with self-reply merging and Progressive Summarization.",
+      "expected_output": "Agent merges original + 3 self-replies into single note, excludes other users' comments, applies Progressive Summarization to merged content.",
+      "files": [],
+      "expectations": [
+        "Agent detects platform as threads from threads.net URL",
+        "Agent identifies and collects self-replies by @unclejobs.ai (same author as original)",
+        "Agent excludes comments by @otheruser and @anotheruser (different authors)",
+        "Note body contains merged content: original + 3 self-replies in order",
+        "Self-replies are visually separated in note body (--- divider or label)",
+        "Progressive Summarization applied to FULL merged content (not just original)",
+        "Note frontmatter has source_type: threads, ai_distill_depth: 4, distill_layer: 0",
+        "Crawl log entry includes platform: threads, usable: true",
+        "Classification recommendation is provided"
+      ]
+    }
+  ]
+}
