@@ -220,7 +220,7 @@ Triggered by "저장해"/"캡처해"/"save" + text:
 2. Generate: `title` (핵심 내용 반영, 15자 이내), `tags` (2-3개), `ai_summary` (1문장)
 3. **Progressive Summarization**:
    - Layer 4: `> **Executive Summary**: {한 줄 핵심}` (노트 최상단)
-   - Body: 원문 텍스트 그대로 + 짧은 구조화 (핵심 주장에 **볼드** 마킹)
+   - Body: 원문 텍스트를 먼저 그대로 보존 → `---` 구분선 아래 구조화 섹션에서 핵심 주장에 **볼드** 마킹 (원문 자체에는 마커 삽입 금지)
    - 200자 이하 메모는 구조화 최소화 (핵심 주장, 시사점만)
 4. **Vault Connections**: `grep -ril` 로 관련 기존 노트 검색 → `[[wikilink]]` 생성
 5. `source_type: memo`, `source` 필드 없음, `content_hash` 필드 없음
