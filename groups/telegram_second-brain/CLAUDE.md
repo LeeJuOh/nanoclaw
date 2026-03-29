@@ -74,5 +74,10 @@ These MCP tools are available only in the NanoClaw container:
 - `mcp__nanoclaw__schedule_task` — Schedule recurring/one-time tasks
 - `mcp__nanoclaw__list_tasks` — List scheduled tasks
 
+### Scheduled Tasks
+- **git push**: every 10 minutes — sync vault to remote
+- **inbox-nudge-lunch**: weekday 12:00 KST — inbox 미분류 정리 유도
+- **inbox-nudge-evening**: weekday 18:00 KST — 퇴근 전 inbox 정리 유도
+
 ### URL Crawl Fallback
 If `curl` fails to fetch a URL, use `agent-browser` (available via Bash) as fallback.
