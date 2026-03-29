@@ -5,10 +5,15 @@ source_type: web
 captured: 2026-03-12T10:00:00+09:00
 processed: 2026-03-12T10:00:05+09:00
 status: pending_review
+ai_distill_depth: 0
+distill_layer: 0
+content_hash: "sha256:f8c3a1b2d4e5f67890abcdef1234567890abcdef1234567890abcdef12345678"
+captured_via: telegram
 tags: [react, server-components, frontend]
 contexts: []
+entities: []
+related: []
 ai_summary: "React Server Components는 서버에서 렌더링되어 클라이언트 번들 크기를 줄이고, 데이터 페칭을 단순화한다."
-captured_via: telegram
 ---
 
 # React Server Components 실전 가이드

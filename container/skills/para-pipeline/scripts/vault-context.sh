@@ -6,7 +6,7 @@ VAULT="${VAULT:-/workspace/extra/vault}"
 if [ -d "$VAULT" ]; then
   TOTAL=$(find "$VAULT" -name '*.md' ! -name '_*' | wc -l | tr -d ' ')
   INBOX=$(find "$VAULT/inbox" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
-  PARA_DIRS=$(find "$VAULT" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -name inbox ! -name _logs | head -20 | sed "s|$VAULT/||" | tr '\n' ', ')
+  PARA_DIRS=$(find "$VAULT" -mindepth 1 -maxdepth 2 -type d ! -name '.*' ! -path '*/.git/*' ! -name inbox ! -name _logs | head -20 | sed "s|$VAULT/||" | tr '\n' ', ')
   RECENT_TAGS=$(grep -rh '^tags:' "$VAULT/inbox/" 2>/dev/null | sed 's/tags: *\[//;s/\]//;s/, /\n/g' | sort | uniq -c | sort -rn | head -10 | awk '{print $2}' | tr '\n' ', ')
 
   cat <<CONTEXT
