@@ -97,7 +97,7 @@ vi.mock('child_process', async () => {
   };
 });
 
-import { runContainerAgent, ContainerOutput } from './container-runner.js';
+import { runContainerAgent, ContainerOutput, registerSkillHooks } from './container-runner.js';
 import type { RegisteredGroup } from './types.js';
 
 const testGroup: RegisteredGroup = {
@@ -217,5 +217,100 @@ describe('container-runner timeout behavior', () => {
     const result = await resultPromise;
     expect(result.status).toBe('success');
     expect(result.newSessionId).toBe('session-456');
+  });
+});
+
+describe('registerSkillHooks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should add vault-context.sh hook when para-pipeline skill exists', async () => {
+    const fs = (await import('fs')).default;
+
+    (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p.includes('settings.json')) return true;
+      if (p.includes('vault-context.sh')) return true;
+      return false;
+    });
+    (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+      JSON.stringify({ env: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' } })
+    );
+
+    registerSkillHooks('/tmp/sessions/.claude', '/tmp/sessions/.claude/skills');
+
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining('settings.json'),
+      expect.stringContaining('"SessionStart"'),
+    );
+
+    const writtenJson = JSON.parse(
+      (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls
+        .find((c: unknown[]) => (c[0] as string).includes('settings.json'))![1] as string
+    );
+    expect(writtenJson.hooks.SessionStart).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'command',
+          command: expect.stringContaining('vault-context.sh'),
+        }),
+      ])
+    );
+  });
+
+  it('should not duplicate hook if already registered', async () => {
+    const fs = (await import('fs')).default;
+
+    const existingSettings = {
+      env: {},
+      hooks: {
+        SessionStart: [{
+          type: 'command',
+          command: 'bash ~/.claude/skills/para-pipeline/scripts/vault-context.sh',
+        }],
+      },
+    };
+    (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+      JSON.stringify(existingSettings)
+    );
+
+    registerSkillHooks('/tmp/sessions/.claude', '/tmp/sessions/.claude/skills');
+
+    const writtenJson = JSON.parse(
+      (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls
+        .find((c: unknown[]) => (c[0] as string).includes('settings.json'))![1] as string
+    );
+    expect(writtenJson.hooks.SessionStart).toHaveLength(1);
+  });
+
+  it('should skip when settings.json does not exist', async () => {
+    const fs = (await import('fs')).default;
+
+    (fs.existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    registerSkillHooks('/tmp/sessions/.claude', '/tmp/sessions/.claude/skills');
+
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('should skip hook when vault-context.sh does not exist', async () => {
+    const fs = (await import('fs')).default;
+
+    (fs.existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p.includes('settings.json')) return true;
+      return false; // vault-context.sh doesn't exist
+    });
+    (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+      JSON.stringify({ env: {} })
+    );
+
+    registerSkillHooks('/tmp/sessions/.claude', '/tmp/sessions/.claude/skills');
+
+    const writtenJson = JSON.parse(
+      (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls
+        .find((c: unknown[]) => (c[0] as string).includes('settings.json'))![1] as string
+    );
+    expect(writtenJson.hooks.SessionStart).toHaveLength(0);
   });
 });

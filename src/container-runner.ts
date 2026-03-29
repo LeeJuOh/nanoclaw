@@ -159,6 +159,10 @@ function buildVolumeMounts(
       fs.cpSync(srcDir, dstDir, { recursive: true });
     }
   }
+
+  // Register SessionStart hooks from skills (must run after skill sync)
+  registerSkillHooks(groupSessionsDir, skillsDst);
+
   mounts.push({
     hostPath: groupSessionsDir,
     containerPath: '/home/node/.claude',
@@ -272,6 +276,45 @@ async function buildContainerArgs(
   args.push(CONTAINER_IMAGE);
 
   return args;
+}
+
+/**
+ * Register SessionStart hooks from skills that provide scripts.
+ * Currently: para-pipeline/scripts/vault-context.sh (Express Ambient)
+ * Called after skill sync so the script exists in skillsDst.
+ */
+export function registerSkillHooks(
+  groupSessionsDir: string,
+  skillsDst: string,
+): void {
+  const settingsPath = path.join(groupSessionsDir, 'settings.json');
+  if (!fs.existsSync(settingsPath)) return;
+
+  const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.SessionStart) settings.hooks.SessionStart = [];
+
+  const vaultContextScript = path.join(
+    skillsDst,
+    'para-pipeline',
+    'scripts',
+    'vault-context.sh',
+  );
+  if (fs.existsSync(vaultContextScript)) {
+    const hookCommand =
+      'bash ~/.claude/skills/para-pipeline/scripts/vault-context.sh';
+    const alreadyRegistered = settings.hooks.SessionStart.some(
+      (h: { command?: string }) => h.command === hookCommand,
+    );
+    if (!alreadyRegistered) {
+      settings.hooks.SessionStart.push({
+        type: 'command',
+        command: hookCommand,
+      });
+    }
+  }
+
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
 }
 
 export async function runContainerAgent(
