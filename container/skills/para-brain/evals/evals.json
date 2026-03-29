@@ -1,0 +1,116 @@
+{
+  "skill_name": "para-brain",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting vault contents:\n- inbox/20260312-100000-react-server-components-guide.md (status: pending_review, tags: [react, server-components, frontend]) (see sample-vault-note-2.md)\n- resources/ddd-patterns/ (has notes about Aggregates and Bounded Context)\n- areas/frontend/ (exists but empty)\n- _settings.yaml (see sample-settings.yaml)\n\nUser message: 미분류 노트 보여줘\n\nThen the user says: 그 RSC 노트를 frontend 영역으로 옮겨줘",
+      "expected_output": "First: list pending inbox notes. Second: move note to areas/frontend/, update frontmatter with status: classified, distill_layer: 1, and contexts. Execute Reweave (but areas/frontend/ is empty, so no connections).",
+      "files": [
+        "evals/files/sample-vault-note-2.md",
+        "evals/files/sample-settings.yaml"
+      ],
+      "expectations": [
+        "Agent lists inbox notes with pending_review status",
+        "Agent moves the file from inbox/ to areas/frontend/",
+        "Agent updates frontmatter status to classified",
+        "Agent updates distill_layer from 0 to 1 (classification = user confirmation)",
+        "Agent adds areas/frontend to contexts array",
+        "Agent creates a git commit for the classification",
+        "Agent mentions Reweave result (no connections since areas/frontend/ is empty)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting vault contents:\n- inbox/20260322-143000-value-object.md (status: pending_review, tags: [ddd, value-object, domain-modeling, immutability], ai_suggested_category: resources/ddd-patterns)\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (see sample-vault-note-1.md, tags: [ddd, aggregate, domain-modeling, consistency-boundary])\n- resources/ddd-patterns/20260308-100000-bounded-context.md (see sample-vault-note-3.md, tags: [ddd, bounded-context, domain-modeling, microservices])\n\nUser message: Value Object 노트를 resources/ddd-patterns로 분류해줘",
+      "expected_output": "Agent classifies the note and executes Reweave — both existing DDD notes share tags (ddd, domain-modeling) with the new note, so bidirectional related: entries should be added.",
+      "files": [
+        "evals/files/sample-vault-note-1.md",
+        "evals/files/sample-vault-note-3.md",
+        "evals/files/sample-settings.yaml"
+      ],
+      "expectations": [
+        "Agent moves value-object note from inbox/ to resources/ddd-patterns/",
+        "Agent updates status to classified, distill_layer to 1",
+        "Agent executes Reweave after classification",
+        "Reweave finds both existing notes (Aggregate and Bounded Context) share tags with new note",
+        "Agent adds related: entries to the new note pointing to both existing notes",
+        "Agent adds related: entries to both existing notes pointing to the new note (bidirectional)",
+        "Each related: entry includes path, reason (mentioning overlapping tags), and added date",
+        "Agent does NOT modify existing notes' body content (only frontmatter related: field)",
+        "Git commit mentions reweave"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting PARA structure:\n- projects/ (empty)\n- areas/frontend/ (has notes)\n- resources/ddd-patterns/ (has notes)\n- archive/ (empty)\n\nUser message: 아카이브에서 삭제해줘",
+      "expected_output": "Agent refuses the deletion request.",
+      "files": [],
+      "expectations": [
+        "Agent refuses the archive deletion request",
+        "Reply explains archive is permanent cold storage",
+        "Agent does NOT attempt any file deletion"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (about DDD Aggregates, see sample-vault-note-1.md)\n- areas/frontend/20260312-100000-react-server-components-guide.md (about RSC)\n- inbox/ (empty)\n\nUser message: DDD에서 Aggregate 경계를 설정할 때 주의할 점이 뭐야?",
+      "expected_output": "Agent searches vault, finds DDD note, synthesizes answer grounded in vault contents.",
+      "files": [
+        "evals/files/sample-vault-note-1.md"
+      ],
+      "expectations": [
+        "Agent searches the vault for DDD/Aggregate keywords",
+        "Answer references specific content from the vault note",
+        "Agent grounds answer in vault contents, not just general knowledge",
+        "Agent does NOT attempt to capture the question as a note"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting vault contents:\n- inbox/20260320-090000-saga-pattern.md (status: pending_review, tags: [microservices, saga, distributed-transactions])\n- inbox/20260321-143000-value-object.md (status: pending_review, tags: [ddd, value-object], distill_layer: 0)\n- resources/ddd-patterns/ (has 1 note)\n- areas/frontend/ (has 1 note)\n- _settings.yaml (see sample-settings.yaml)\n\nUser message: 주간 리뷰 실행해줘",
+      "expected_output": "Weekly review: list pending notes, classification recommendations, distill_layer: 0 count.",
+      "files": [
+        "evals/files/sample-vault-note-1.md",
+        "evals/files/sample-settings.yaml"
+      ],
+      "expectations": [
+        "Lists both inbox notes with titles and tags",
+        "Provides classification recommendation for each note",
+        "Labels existing subfolders as (기존)",
+        "Does NOT move any notes",
+        "Reports distill_layer: 0 count (미확인 노트 수)",
+        "Shows total inbox count"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting vault contents:\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (see sample-vault-note-1.md, distill_layer: 1)\n\nUser message: Aggregate 패턴 노트 다시 정리해줘",
+      "expected_output": "Manual Distill: re-run Progressive Summarization on the note, update distill_layer from 1 to 2.",
+      "files": [
+        "evals/files/sample-vault-note-1.md"
+      ],
+      "expectations": [
+        "Agent finds and reads the Aggregate pattern note",
+        "Agent re-generates Layer 2 (bold), Layer 3 (highlights), Layer 4 (Executive Summary)",
+        "Agent updates distill_layer from 1 to 2",
+        "Agent creates a git commit with message mentioning distill",
+        "Agent shows the updated summary to the user"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "You are the para-brain knowledge organizer. The vault is at ./test-vault/.\n\nExisting vault contents:\n- inbox/20260321-143000-value-object.md (status: pending_review, tags: [ddd, value-object, domain-modeling, immutability])\n- resources/ddd-patterns/20260310-143000-ddd-aggregate-pattern.md (tags: [ddd, aggregate, domain-modeling])\n- areas/frontend/ (has notes)\n- _settings.yaml: auto_classify: { enabled: true, trigger: on_capture }\n\nThe user has just captured a new DDD note. Simulate auto-classify mode. The note clearly matches resources/ddd-patterns (existing folder, tags ddd + domain-modeling overlap).",
+      "expected_output": "Auto-classify with high confidence: move to resources/ddd-patterns, status: auto_classified, execute Reweave.",
+      "files": [
+        "evals/files/sample-vault-note-1.md"
+      ],
+      "expectations": [
+        "Agent auto-classifies to resources/ddd-patterns (high confidence)",
+        "Status is set to auto_classified",
+        "Reweave is executed after auto-classification",
+        "Reply uses compact auto-classify format",
+        "Contexts array includes resources/ddd-patterns"
+      ]
+    }
+  ]
+}

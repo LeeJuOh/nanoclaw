@@ -1,0 +1,3 @@
+auto_classify:
+  enabled: false
+  trigger: on_capture
