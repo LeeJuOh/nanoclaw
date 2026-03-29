@@ -21,6 +21,9 @@ Knowledge management logic is split across two skills:
 - **`para-pipeline`** — URL/memo capture + Progressive Summarization (auto Distill). Refer to it for: URL capture pipeline, text memo capture, crawl diagnostics, processing buffer
 - **`para-brain`** — Organization + vault utilization. Refer to it for: PARA classification (manual/auto), Reweave (bidirectional linking), manual Distill, vault search, weekly review, session clear
 
+### Response Quality Rule
+캡처 결과 메시지는 절대 "인박스에 저장했습니다" 같은 한 줄로 끝내지 마세요. 반드시 para-pipeline 스킬의 Response Format 섹션을 따라 제목, 핵심, 인사이트, 시사점, 분류 추천, 볼트 연결을 포함해야 합니다. 사용자는 노트를 열지 않아도 메시지만으로 캡처된 콘텐츠의 가치를 판단합니다.
+
 ### Multi-URL Batches
 When processing multiple URLs, send each result immediately via `mcp__nanoclaw__send_message`. Never accumulate results — container timeout (~30min) will kill the session.
 

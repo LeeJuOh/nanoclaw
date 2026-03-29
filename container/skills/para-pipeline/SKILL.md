@@ -38,6 +38,8 @@ Always respond in the same language the user writes in.
 
 ## Gotchas
 
+- **"인박스에 저장했습니다" 금지**: 캡처 결과를 한 줄로 끝내지 마세요. 반드시 아래 Response Format 섹션의 전체 형식을 따라 핵심·인사이트·시사점·분류추천·볼트연결을 포함한 메시지를 전송해야 합니다. 사용자는 노트를 열지 않아도 메시지만으로 핵심을 파악할 수 있어야 합니다
+- **분류 추천은 캡처의 일부**: `ai_suggested_category`를 빈 채로 두지 마세요. 캡처할 때 반드시 `ls $VAULT/projects/ $VAULT/areas/ $VAULT/resources/`로 기존 폴더를 확인하고, 태그·주제 매칭으로 추천 경로를 결정해야 합니다. frontmatter에도, 응답 메시지에도 빠지면 안 됨
 - **플랫폼별 크롤링 필수**: URL을 받으면 반드시 플랫폼을 먼저 감지하고, 해당 플랫폼 전략으로 크롤링. 모든 URL에 `curl -sL`부터 시도하면 Twitter/X, Threads, Medium 등에서 빈 HTML만 받음. [references/platform-strategies.md](references/platform-strategies.md) 참조
 - **크롤링 결과는 반드시 로깅**: 모든 크롤링 시도를 `$VAULT/_logs/crawl.jsonl`에 기록. 로그 없이는 실패 원인 진단 불가. Crawl Diagnostics 섹션 참조
 - **curl 타임아웃 & JS-only 사이트**: `curl -sL -m 30`이 빈 HTML이나 403을 반환하면 `agent-browser`로 즉시 fallback. 30초 제한 초과 시에도 동일. 응답이 짧거나(`<1KB`) `<noscript>` 태그만 있으면 browser fallback
@@ -106,7 +108,16 @@ URL을 받으면 크롤링 전에 소스 플랫폼을 먼저 감지한다. 플�
    - `ai_summary`: 2-3문장 요약
    - `tags`: 3-5개 키워드
    - `content_hash`: `sha256:` + SHA-256 of crawled body text
-9. **Deep Analysis + Progressive Summarization** — 본문을 심층 분석하되, Layer 2-4를 동시에 적용:
+   - `ai_suggested_category`: 아래 Classification Recommendation 단계에서 결정
+9. **Classification Recommendation** — 캡처 단계에서 분류 추천을 생성한다. 실제 이동은 하지 않지만 frontmatter와 응답 메시지에 추천을 포함해야 한다:
+   1. 기존 PARA 폴더 스캔: `ls $VAULT/projects/ $VAULT/areas/ $VAULT/resources/`
+   2. 콘텐츠의 `tags`와 주제를 기존 폴더명과 대조
+   3. 매칭 규칙:
+      - **기존 폴더 매칭**: 태그나 주제가 기존 하위 폴더와 겹치면 `{category}/{folder}` 추천 (예: `areas/claude-code`). 라벨: **(기존)**
+      - **신규 폴더 제안**: 기존 폴더에 맞지 않으면 새 경로 제안 (예: `resources/multi-agent`). 라벨: **(신규)**
+      - **PARA 의사결정**: 목표+마감 있으면 `projects/`, 지속 관리 영역이면 `areas/`, 참고 자료면 `resources/`
+   4. `ai_suggested_category`에 추천 경로 저장, 추천 이유도 한 줄로 정리 (응답 메시지에 사용)
+10. **Deep Analysis + Progressive Summarization** — 본문을 심층 분석하되, Layer 2-4를 동시에 적용:
    - **Layer 4 — Executive Summary**: 노트 최상단에 `> **Executive Summary**: {한 줄 핵심}` 블록
    - **핵심 주장 (Core Claims)**: 저자의 핵심 아이디어 2-3개. 핵심 문장을 **볼드**(Layer 2)로 마킹
    - **주요 논거 및 근거 (Key Arguments)**: 핵심 주장을 뒷받침하는 증거, 데이터, 사례. 최핵심 증거를 ==하이라이트==(Layer 3)로 마킹
@@ -115,23 +126,39 @@ URL을 받으면 크롤링 전에 소스 플랫폼을 먼저 감지한다. 플�
    - **한계 및 열린 질문 (Limitations & Open Questions)**: 저자가 다루지 않은 부분
    - **볼트 연결 (Vault Connections)**: `grep -ril` 로 볼트 내 관련 노트를 검색. 발견하면 `[[폴더/파일명|표시텍스트]] — {연결 사유}` 형식으로 wikilink 생성. 관련 노트가 없으면 이 섹션 생략
    - Progressive Summarization 가이드: [references/distill-layers.md](references/distill-layers.md) 참조
-10. Create note using the format in [references/note-template.md](references/note-template.md)
-   - frontmatter: `ai_distill_depth: 4`, `distill_layer: 0` 반드시 포함
-11. Save to `$VAULT/inbox/YYYYMMDD-HHMMSS-slug.md`
+11. Create note using the format in [references/note-template.md](references/note-template.md)
+   - frontmatter: `ai_distill_depth: 4`, `distill_layer: 0`, `ai_suggested_category` 반드시 포함
+12. Save to `$VAULT/inbox/YYYYMMDD-HHMMSS-slug.md`
    - Slug: ASCII alphanumeric + hyphens from title, max 60 chars
    - Korean titles: extract English keywords or date-based fallback (see Gotchas)
-12. Git: `cd $VAULT && git add inbox/<filename> _logs/crawl.jsonl && git commit -m "capture: {title}"` (push는 스케줄러가 담당)
-13. 분류 추천 포함 결과 메시지 전송 (파일은 항상 inbox에 유지):
+13. Git: `cd $VAULT && git add inbox/<filename> _logs/crawl.jsonl && git commit -m "capture: {title}"` (push는 스케줄러가 담당)
+14. **결과 메시지 전송 (필수 — 절대 생략 금지)**. 아래 형식을 반드시 따르세요:
 
-> *캡처 완료: {title}*
->
-> *핵심*: {Executive Summary 한 줄}
-> *인사이트*: {가장 주목할 만한 포인트 1줄}
-> *시사점*: {실용적 행동 지침 1줄}
->
-> 배치: `{ai_suggested_category}` ({기존|신규}) — {reason}
-> 연결: {[[wikilink1]], [[wikilink2]] 또는 "없음"}
-> (답장으로 분류하거나 나중에 일괄 분류)
+## Response Format (캡처 결과 메시지)
+
+캡처 완료 후 사용자에게 전송하는 메시지는 반드시 아래 형식을 따라야 합니다. "인박스에 저장했습니다" 같은 한 줄 응답은 **금지**. 사용자는 이 메시지만으로 캡처된 콘텐츠의 가치를 판단할 수 있어야 합니다.
+
+```
+*캡처 완료: {title}*
+
+*핵심*: {Executive Summary — 이 콘텐츠가 왜 읽을 가치가 있는지 한 줄}
+*인사이트*: {기존 통념과 다른 시각 또는 놓치기 쉬운 핵심 포인트 1줄}
+*시사점*: {실용적으로 적용할 수 있는 행동 지침 1줄}
+
+배치: `{ai_suggested_category}` ({기존 폴더|신규 제안}) — {추천 이유}
+연결: {[[관련노트1]], [[관련노트2]] 또는 "없음"}
+(답장으로 분류하거나 나중에 일괄 분류)
+```
+
+**필수 필드 체크리스트** — 하나라도 빠지면 메시지를 보내지 마세요:
+- [ ] 제목 (`*캡처 완료: {title}*`)
+- [ ] 핵심 (Executive Summary)
+- [ ] 인사이트 (놓치기 쉬운 포인트)
+- [ ] 시사점 (행동 가능한 것)
+- [ ] 배치 추천 (PARA 카테고리 + 이유)
+- [ ] 볼트 연결 (있으면 wikilink, 없으면 "없음")
+
+텍스트 메모 캡처도 같은 형식 사용. 다만 메모가 200자 이하면 *인사이트*와 *시사점*을 *한 줄 정리*로 합칠 수 있음.
 
 캡처 파이프라인은 여기서 종료. **분류(이동)는 para-brain 스킬이 담당**.
 
@@ -218,15 +245,16 @@ grep '"next":"browser"' $VAULT/_logs/crawl.jsonl
 Triggered by "저장해"/"캡처해"/"save" + text:
 1. Extract the text after the trigger word
 2. Generate: `title` (핵심 내용 반영, 15자 이내), `tags` (2-3개), `ai_summary` (1문장)
-3. **Progressive Summarization**:
+3. **Classification Recommendation**: URL Capture step 9와 동일 — 기존 PARA 폴더 스캔 후 `ai_suggested_category` 결정
+4. **Progressive Summarization**:
    - Layer 4: `> **Executive Summary**: {한 줄 핵심}` (노트 최상단)
    - Body: 원문 텍스트를 먼저 그대로 보존 → `---` 구분선 아래 구조화 섹션에서 핵심 주장에 **볼드** 마킹 (원문 자체에는 마커 삽입 금지)
    - 200자 이하 메모는 구조화 최소화 (핵심 주장, 시사점만)
-4. **Vault Connections**: `grep -ril` 로 관련 기존 노트 검색 → `[[wikilink]]` 생성
-5. `source_type: memo`, `source` 필드 없음, `content_hash` 필드 없음
-6. `ai_distill_depth: 4`, `distill_layer: 0`
-7. File: `$VAULT/inbox/YYYYMMDD-HHMMSS-slug.md` (slug from title)
-8. Git commit + classification recommendation (same format as URL capture)
+5. **Vault Connections**: `grep -ril` 로 관련 기존 노트 검색 → `[[wikilink]]` 생성
+6. `source_type: memo`, `source` 필드 없음, `content_hash` 필드 없음
+7. `ai_distill_depth: 4`, `distill_layer: 0`, `ai_suggested_category` 반드시 포함
+8. File: `$VAULT/inbox/YYYYMMDD-HHMMSS-slug.md` (slug from title)
+9. Git commit + **결과 메시지 전송 (Response Format 섹션 형식 필수)**
 - See [references/note-template.md](references/note-template.md) for memo-specific format
 
 **captured_via**: Set based on environment — NanoClaw container: check channel from CLAUDE.md (telegram, whatsapp, etc.). Claude Code local: `claude-code`.
