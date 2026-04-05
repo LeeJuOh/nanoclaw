@@ -33,6 +33,7 @@ import {
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
+  deleteSession,
   getAllTasks,
   getLastBotMessageTimestamp,
   getMessagesSince,
@@ -61,6 +62,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { startSessionCleanup } from './session-cleanup.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -379,6 +381,26 @@ async function runAgent(
     }
 
     if (output.status === 'error') {
+      // Detect stale/corrupt session — clear it so the next retry starts fresh.
+      // The session .jsonl can go missing after a crash mid-write, manual
+      // deletion, or disk-full. The existing backoff in group-queue.ts
+      // handles the retry; we just need to remove the broken session ID.
+      const isStaleSession =
+        sessionId &&
+        output.error &&
+        /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(
+          output.error,
+        );
+
+      if (isStaleSession) {
+        logger.warn(
+          { group: group.name, staleSessionId: sessionId, error: output.error },
+          'Stale session detected — clearing for next retry',
+        );
+        delete sessions[group.folder];
+        deleteSession(group.folder);
+      }
+
       logger.error(
         { group: group.name, error: output.error },
         'Container agent error',
@@ -707,6 +729,7 @@ async function main(): Promise<void> {
       logger.info({ groupFolder }, 'Session cleared');
     },
   });
+  startSessionCleanup();
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
